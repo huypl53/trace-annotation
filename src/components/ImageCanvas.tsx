@@ -7,7 +7,6 @@ import { Point } from '../models/types';
 import { calculateSnap, detectNearestEdge, EdgeType } from '../utils/snapping';
 import { detectWrongBorders as detectWrongBordersUtil, WrongBorderSegment } from '../utils/wrongBorderDetector';
 import { BorderConflictRenderer } from './BorderConflictRenderer';
-import { EmptyCellRenderer } from './EmptyCellRenderer';
 import { OverlapRenderer } from './OverlapRenderer';
 import { WrongBorderRenderer } from './WrongBorderRenderer';
 
@@ -878,7 +877,6 @@ export function ImageCanvas({
               })}
               <OverlapRenderer cells={annotation.cells} />
               <BorderConflictRenderer cells={annotation.cells} scale={1} />
-              <EmptyCellRenderer cells={annotation.cells} />
               {detectWrongBorders && <WrongBorderRenderer wrongBorders={wrongBorders} horizontalPadding={horizontalPadding} verticalPadding={verticalPadding} />}
               {shouldShowSnapPreview && (
                 <polygon
