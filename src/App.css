@@ -698,6 +698,13 @@ body {
   background: #f9fafb;
   position: relative;
   overflow: auto;
+  /* Hide scrollbars while keeping scroll functionality */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.image-canvas::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .zoom-controls {

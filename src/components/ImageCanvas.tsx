@@ -51,6 +51,12 @@ export function ImageCanvas({
   const [userZoom, setUserZoom] = useState(1);
   const [imageOffset, setImageOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const panOffsetRef = useRef(panOffset);
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    panOffsetRef.current = panOffset;
+  }, [panOffset]);
 
   // Calculate scale: converts from original image coordinates to current display coordinates
   // displayWidth = imageSize.width * userZoom (current displayed image width in pixels)
@@ -529,22 +535,83 @@ export function ImageCanvas({
     };
   }, [detectWrongBorders, imageUrl, annotation]);
 
-  const handleZoomIn = () => {
+  // Helper function to zoom at a specific mouse position
+  const zoomAtPosition = useCallback((mouseX: number, mouseY: number, zoomFactor: number) => {
+    if (!containerRef.current || !originalImageSize) return;
+
+    const container = containerRef.current;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // Get current zoom and calculate current scale
     setUserZoom(prev => {
-      const newZoom = Math.min(prev * 1.2, 5);
-      console.log('[Zoom Debug] handleZoomIn:');
-      console.log('  prevZoom:', prev, 'newZoom:', newZoom);
+      const newZoom = Math.max(0.1, Math.min(5, prev * zoomFactor));
+      const oldScale = originalImageSize && imageSize
+        ? (imageSize.width * prev) / originalImageSize.width
+        : baseScale * prev;
+      const newScale = originalImageSize && imageSize
+        ? (imageSize.width * newZoom) / originalImageSize.width
+        : baseScale * newZoom;
+
+      // Use ref to get current panOffset (avoids stale closure)
+      const currentPanOffset = panOffsetRef.current;
+
+      // Calculate current display dimensions and offset
+      const oldDisplayWidth = originalImageSize.width * oldScale;
+      const oldDisplayHeight = originalImageSize.height * oldScale;
+      const oldDisplayOffsetX = (containerWidth - oldDisplayWidth) / 2 + currentPanOffset.x;
+      const oldDisplayOffsetY = (containerHeight - oldDisplayHeight) / 2 + currentPanOffset.y;
+
+      // Calculate SVG coordinate at mouse position before zoom
+      const svgX = (mouseX - oldDisplayOffsetX) / oldScale;
+      const svgY = (mouseY - oldDisplayOffsetY) / oldScale;
+
+      // Calculate new display dimensions
+      const newDisplayWidth = originalImageSize.width * newScale;
+      const newDisplayHeight = originalImageSize.height * newScale;
+
+      // Calculate new panOffset to keep the same SVG coordinate under the mouse
+      const newPanOffsetX = mouseX - (containerWidth - newDisplayWidth) / 2 - svgX * newScale;
+      const newPanOffsetY = mouseY - (containerHeight - newDisplayHeight) / 2 - svgY * newScale;
+
+      setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
+
       return newZoom;
     });
+  }, [originalImageSize, imageSize, baseScale]);
+
+  const handleZoomIn = (e?: React.MouseEvent) => {
+    if (!containerRef.current) {
+      // Fallback to center zoom if no container
+      setUserZoom(prev => Math.min(prev * 1.2, 5));
+      return;
+    }
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Use mouse position if available, otherwise use center of container
+    const mouseX = e ? e.clientX - containerRect.left : container.clientWidth / 2;
+    const mouseY = e ? e.clientY - containerRect.top : container.clientHeight / 2;
+
+    zoomAtPosition(mouseX, mouseY, 1.2);
   };
 
-  const handleZoomOut = () => {
-    setUserZoom(prev => {
-      const newZoom = Math.max(prev / 1.2, 0.1);
-      console.log('[Zoom Debug] handleZoomOut:');
-      console.log('  prevZoom:', prev, 'newZoom:', newZoom);
-      return newZoom;
-    });
+  const handleZoomOut = (e?: React.MouseEvent) => {
+    if (!containerRef.current) {
+      // Fallback to center zoom if no container
+      setUserZoom(prev => Math.max(prev / 1.2, 0.1));
+      return;
+    }
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Use mouse position if available, otherwise use center of container
+    const mouseX = e ? e.clientX - containerRect.left : container.clientWidth / 2;
+    const mouseY = e ? e.clientY - containerRect.top : container.clientHeight / 2;
+
+    zoomAtPosition(mouseX, mouseY, 1 / 1.2);
   };
 
   const handleResetZoom = () => {
@@ -571,15 +638,14 @@ export function ImageCanvas({
       // Prevent browser's default zoom behavior
       e.preventDefault();
 
-      // Perform the zoom
+      // Get mouse position relative to container
+      const containerRect = container.getBoundingClientRect();
+      const mouseX = e.clientX - containerRect.left;
+      const mouseY = e.clientY - containerRect.top;
+
+      // Perform the zoom at mouse position
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setUserZoom(prev => {
-        const newZoom = Math.max(0.1, Math.min(5, prev * delta));
-        console.log('[Zoom Debug] handleWheel zoom:');
-        console.log('  prevZoom:', prev, 'newZoom:', newZoom);
-        console.log('  delta:', delta, 'deltaY:', e.deltaY);
-        return newZoom;
-      });
+      zoomAtPosition(mouseX, mouseY, delta);
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -587,7 +653,7 @@ export function ImageCanvas({
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [zoomAtPosition]);
 
   // Prevent browser zoom when Ctrl+scroll is used over the canvas
   useEffect(() => {
