@@ -24,19 +24,29 @@ export function useCellDrag({ onDrag, onDragEnd, cells, scale, imageOffset, getC
     startX: number;
     startY: number;
     initialCell: Cell | null;
+    initialBounds: { minX: number; minY: number } | null; // Store initial bounds for position tracking
     containerRect: DOMRect | null;
     targetEdge: EdgeType | null; // The edge nearest to the mouse click
     snapDeltaX: number; // Stored snap delta for use on mouse up
     snapDeltaY: number; // Stored snap delta for use on mouse up
+    imageOffset: { x: number; y: number }; // Store offset at drag start to prevent jitter
+    scale: number; // Store scale at drag start to prevent jitter
+    lastTargetX: number; // Track the last target X position we calculated
+    lastTargetY: number; // Track the last target Y position we calculated
   }>({
     cellId: null,
     startX: 0,
     startY: 0,
     initialCell: null,
+    initialBounds: null,
     containerRect: null,
     targetEdge: null,
     snapDeltaX: 0,
     snapDeltaY: 0,
+    imageOffset: { x: 0, y: 0 },
+    scale: 1,
+    lastTargetX: 0,
+    lastTargetY: 0,
   });
 
   const handleMouseDown = useCallback(
@@ -58,15 +68,22 @@ export function useCellDrag({ onDrag, onDragEnd, cells, scale, imageOffset, getC
       // Detect which edge of the cell is nearest to the mouse click
       const targetEdge = detectNearestEdge(cell, { x: svgX, y: svgY });
 
+      const initialBounds = cell.getBounds();
+
       dragState.current = {
         cellId,
         startX: svgX,
         startY: svgY,
         initialCell: new Cell(cell.toData()),
+        initialBounds: { minX: initialBounds.minX, minY: initialBounds.minY },
         containerRect: containerRect,
         targetEdge,
         snapDeltaX: 0,
         snapDeltaY: 0,
+        imageOffset: { ...imageOffset }, // Store offset at drag start
+        scale, // Store scale at drag start
+        lastTargetX: initialBounds.minX, // Initialize to initial position
+        lastTargetY: initialBounds.minY, // Initialize to initial position
       };
       setSnapPreview(null);
     },
@@ -80,38 +97,63 @@ export function useCellDrag({ onDrag, onDragEnd, cells, scale, imageOffset, getC
       // Get current container rect (recalculate in case of scrolling/movement)
       const containerRect = getContainerRect ? getContainerRect() : dragState.current.containerRect;
 
+      // Use stored offset and scale from drag start to prevent jitter
+      const storedOffset = dragState.current.imageOffset;
+      const storedScale = dragState.current.scale;
+
       // Calculate mouse position relative to container, then to image, then to SVG coordinates
       const mouseX = containerRect ? e.clientX - containerRect.left : e.clientX;
       const mouseY = containerRect ? e.clientY - containerRect.top : e.clientY;
-      const svgX = (mouseX - imageOffset.x) / scale;
-      const svgY = (mouseY - imageOffset.y) / scale;
+      const svgX = (mouseX - storedOffset.x) / storedScale;
+      const svgY = (mouseY - storedOffset.y) / storedScale;
 
       // Calculate raw delta from initial mouse position
       const rawDeltaX = svgX - dragState.current.startX;
       const rawDeltaY = svgY - dragState.current.startY;
 
-      // Get current cell position from the cells array
+      // Calculate where the cell should be based on initial position + mouse delta
+      // This is the same calculation used by the snap preview, ensuring consistency
+      if (!dragState.current.initialBounds) return;
+      const targetX = dragState.current.initialBounds.minX + rawDeltaX;
+      const targetY = dragState.current.initialBounds.minY + rawDeltaY;
+
+      // Get the actual current cell position to detect drift
       const currentCell = cells.find(c => c.id === dragState.current.cellId);
       if (!currentCell) return;
 
-      // Calculate where the cell should be based on initial position + mouse delta
-      const initialBounds = dragState.current.initialCell.getBounds();
-      const targetX = initialBounds.minX + rawDeltaX;
-      const targetY = initialBounds.minY + rawDeltaY;
-
-      // Calculate current position
       const currentBounds = currentCell.getBounds();
+      const currentX = currentBounds.minX;
+      const currentY = currentBounds.minY;
 
-      // Calculate the delta needed to move from current position to target position
-      const neededDeltaX = targetX - currentBounds.minX;
-      const neededDeltaY = targetY - currentBounds.minY;
+      // Check if our tracked position has drifted significantly from the actual position
+      // If so, sync it to prevent accumulation errors
+      const driftX = Math.abs(dragState.current.lastTargetX - currentX);
+      const driftY = Math.abs(dragState.current.lastTargetY - currentY);
+      const maxDrift = 0.1; // Allow small drift to avoid jitter from async state
 
-      // Always move the cell to follow the mouse (no snapping during drag)
-      onDrag(dragState.current.cellId, neededDeltaX, neededDeltaY);
+      if (driftX > maxDrift || driftY > maxDrift) {
+        // Sync tracked position with actual position to correct drift
+        dragState.current.lastTargetX = currentX;
+        dragState.current.lastTargetY = currentY;
+      }
+
+      // Calculate the incremental delta from the last target position
+      const incrementalDeltaX = targetX - dragState.current.lastTargetX;
+      const incrementalDeltaY = targetY - dragState.current.lastTargetY;
+
+      // Only apply movement if there's a meaningful change (avoid micro-movements)
+      if (Math.abs(incrementalDeltaX) > 0.001 || Math.abs(incrementalDeltaY) > 0.001) {
+        // Apply the incremental movement
+        onDrag(dragState.current.cellId, incrementalDeltaX, incrementalDeltaY);
+
+        // Update tracked position to match what we just requested
+        dragState.current.lastTargetX = targetX;
+        dragState.current.lastTargetY = targetY;
+      }
 
       // Calculate snap preview for visual feedback
       const otherCells = cells.filter(c => c.id !== dragState.current.cellId);
-      const snapThreshold = 5 / scale; // Convert screen pixels (5px) to image coordinates
+      const snapThreshold = 5 / storedScale; // Convert screen pixels (5px) to image coordinates
       const snapResult = calculateSnap(
         dragState.current.initialCell,
         otherCells,
@@ -144,7 +186,7 @@ export function useCellDrag({ onDrag, onDragEnd, cells, scale, imageOffset, getC
         });
       }
     },
-    [cells, scale, imageOffset, onDrag, getContainerRect]
+    [cells, onDrag, getContainerRect]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -177,10 +219,15 @@ export function useCellDrag({ onDrag, onDragEnd, cells, scale, imageOffset, getC
         startX: 0,
         startY: 0,
         initialCell: null,
+        initialBounds: null,
         containerRect: null,
         targetEdge: null,
         snapDeltaX: 0,
         snapDeltaY: 0,
+        imageOffset: { x: 0, y: 0 },
+        scale: 1,
+        lastTargetX: 0,
+        lastTargetY: 0,
       };
       setSnapPreview(null);
     }

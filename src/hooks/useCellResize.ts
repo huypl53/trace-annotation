@@ -19,12 +19,16 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
     initialPoints: Point[] | null;
     startX: number;
     startY: number;
+    imageOffset: { x: number; y: number }; // Store offset at resize start to prevent jitter
+    scale: number; // Store scale at resize start to prevent jitter
   }>({
     cellId: null,
     cornerIndex: null,
     initialPoints: null,
     startX: 0,
     startY: 0,
+    imageOffset: { x: 0, y: 0 },
+    scale: 1,
   });
 
   const handleCornerMouseDown = useCallback(
@@ -44,6 +48,8 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
         initialPoints: [...initialPoints],
         startX: svgX,
         startY: svgY,
+        imageOffset: { ...imageOffset }, // Store offset at resize start
+        scale, // Store scale at resize start
       };
     },
     [scale, imageOffset, getContainerRect]
@@ -53,11 +59,15 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
     (e: React.MouseEvent) => {
       if (!resizeState.current.cellId || resizeState.current.cornerIndex === null || !resizeState.current.initialPoints) return;
 
+      // Use stored offset and scale from resize start to prevent jitter
+      const storedOffset = resizeState.current.imageOffset;
+      const storedScale = resizeState.current.scale;
+
       const containerRect = getContainerRect ? getContainerRect() : null;
       const mouseX = containerRect ? e.clientX - containerRect.left : e.clientX;
       const mouseY = containerRect ? e.clientY - containerRect.top : e.clientY;
-      const svgX = (mouseX - imageOffset.x) / scale;
-      const svgY = (mouseY - imageOffset.y) / scale;
+      const svgX = (mouseX - storedOffset.x) / storedScale;
+      const svgY = (mouseY - storedOffset.y) / storedScale;
 
       const deltaX = svgX - resizeState.current.startX;
       const deltaY = svgY - resizeState.current.startY;
@@ -70,7 +80,7 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
       const newCornerY = newPoints[cornerIndex].y + deltaY;
 
       // Apply corner snapping (convert threshold from screen pixels to image coordinates)
-      const snapThreshold = 8 / scale;
+      const snapThreshold = 8 / storedScale;
       const otherCells = cells.filter(c => c.id !== resizeState.current.cellId);
       const snapResult = calculateCornerSnap(
         { x: newCornerX, y: newCornerY },
@@ -114,7 +124,7 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
 
       onResize(newPoints);
     },
-    [cells, scale, imageOffset, onResize, getContainerRect]
+    [cells, onResize, getContainerRect]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -126,6 +136,8 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
         initialPoints: null,
         startX: 0,
         startY: 0,
+        imageOffset: { x: 0, y: 0 },
+        scale: 1,
       };
     }
   }, [onResizeEnd]);

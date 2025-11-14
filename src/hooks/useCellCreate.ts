@@ -23,11 +23,15 @@ export function useCellCreate({
     startY: number;
     currentX: number;
     currentY: number;
+    imageOffset: { x: number; y: number }; // Store offset at create start to prevent jitter
+    scale: number; // Store scale at create start to prevent jitter
   }>({
     startX: 0,
     startY: 0,
     currentX: 0,
     currentY: 0,
+    imageOffset: { x: 0, y: 0 },
+    scale: 1,
   });
 
   const handleMouseDown = useCallback(
@@ -63,6 +67,8 @@ export function useCellCreate({
         startY: originalY,
         currentX: originalX,
         currentY: originalY,
+        imageOffset: { ...imageOffset }, // Store offset at create start
+        scale, // Store scale at create start
       };
     },
     [scale, imageOffset, getContainerRect, imageSize]
@@ -72,22 +78,26 @@ export function useCellCreate({
     (e: React.MouseEvent) => {
       if (!isCreating || !imageSize) return;
 
+      // Use stored offset and scale from create start to prevent jitter
+      const storedOffset = createState.current.imageOffset;
+      const storedScale = createState.current.scale;
+
       const containerRect = getContainerRect ? getContainerRect() : null;
       if (!containerRect) return;
 
-      const moveX = e.clientX - containerRect.left - imageOffset.x;
-      const moveY = e.clientY - containerRect.top - imageOffset.y;
+      const moveX = e.clientX - containerRect.left - storedOffset.x;
+      const moveY = e.clientY - containerRect.top - storedOffset.y;
 
       // Convert to original image coordinates
-      const originalX = moveX / scale;
-      const originalY = moveY / scale;
+      const originalX = moveX / storedScale;
+      const originalY = moveY / storedScale;
 
       createState.current.currentX = originalX;
       createState.current.currentY = originalY;
       // Force re-render to update preview
       forceUpdate(prev => prev + 1);
     },
-    [scale, imageOffset, getContainerRect, imageSize, isCreating]
+    [getContainerRect, imageSize, isCreating]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -122,6 +132,8 @@ export function useCellCreate({
       startY: 0,
       currentX: 0,
       currentY: 0,
+      imageOffset: { x: 0, y: 0 },
+      scale: 1,
     };
   }, [onCreateCell, isCreating]);
 

@@ -496,6 +496,8 @@ function App() {
             onCreateCell={isCreatingCell ? handleCreateCellFromPoints : undefined}
             mode={mode}
             showCells={showCells}
+            snapEnabled={moveSpeedSettings.snapEnabled}
+            snapThreshold={moveSpeedSettings.snapThreshold}
           />
           <div className="controls-panel">
             {mode === 'move' && (

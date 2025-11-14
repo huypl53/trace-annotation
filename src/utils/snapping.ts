@@ -27,6 +27,7 @@ export interface SnapResult {
   snapped: boolean;
   deltaX: number;
   deltaY: number;
+  matchedCellId: string | null;
 }
 
 export interface CornerSnapResult {
@@ -54,6 +55,7 @@ export function calculateSnap(
   let bestDistX = Infinity;
   let bestDistY = Infinity;
   let snapped = false;
+  let matchedCellId: string | null = null;
 
   for (const otherCell of otherCells) {
     if (otherCell.id === draggedCell.id) continue;
@@ -77,6 +79,7 @@ export function calculateSnap(
           bestSnapX = otherLeft - draggedBounds.maxX;
           bestDistX = distToOtherLeft;
           snapped = true;
+          matchedCellId = otherCell.id;
         }
       }
     }
@@ -90,6 +93,7 @@ export function calculateSnap(
           bestSnapX = otherRight - draggedBounds.minX;
           bestDistX = distToOtherRight;
           snapped = true;
+          matchedCellId = otherCell.id;
         }
       }
     }
@@ -104,6 +108,7 @@ export function calculateSnap(
           bestSnapY = otherTop - draggedBounds.maxY;
           bestDistY = distToOtherTop;
           snapped = true;
+          matchedCellId = otherCell.id;
         }
       }
     }
@@ -117,6 +122,7 @@ export function calculateSnap(
           bestSnapY = otherBottom - draggedBounds.minY;
           bestDistY = distToOtherBottom;
           snapped = true;
+          matchedCellId = otherCell.id;
         }
       }
     }
@@ -126,6 +132,7 @@ export function calculateSnap(
     snapped,
     deltaX: bestSnapX,
     deltaY: bestSnapY,
+    matchedCellId,
   };
 }
 
