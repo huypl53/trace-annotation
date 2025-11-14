@@ -7,6 +7,7 @@ import { Point } from '../models/types';
 import { calculateSnap, detectNearestEdge, EdgeType } from '../utils/snapping';
 import { detectWrongBorders as detectWrongBordersUtil, WrongBorderSegment } from '../utils/wrongBorderDetector';
 import { BorderConflictRenderer } from './BorderConflictRenderer';
+import { EmptyCellRenderer } from './EmptyCellRenderer';
 import { OverlapRenderer } from './OverlapRenderer';
 import { WrongBorderRenderer } from './WrongBorderRenderer';
 
@@ -25,6 +26,8 @@ interface ImageCanvasProps {
   snapEnabled?: boolean;
   snapThreshold?: number;
   detectWrongBorders?: boolean;
+  horizontalPadding?: number;
+  verticalPadding?: number;
 }
 
 export function ImageCanvas({
@@ -42,6 +45,8 @@ export function ImageCanvas({
   snapEnabled = true,
   snapThreshold = 5,
   detectWrongBorders = false,
+  horizontalPadding = 2,
+  verticalPadding = 3,
 }: ImageCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -516,7 +521,7 @@ export function ImageCanvas({
 
     const runDetection = async () => {
       try {
-        const detected = await detectWrongBordersUtil(annotation.cells, imageUrl);
+        const detected = await detectWrongBordersUtil(annotation.cells, imageUrl, horizontalPadding, verticalPadding);
         if (!cancelled) {
           setWrongBorders(detected);
         }
@@ -533,7 +538,7 @@ export function ImageCanvas({
     return () => {
       cancelled = true;
     };
-  }, [detectWrongBorders, imageUrl, annotation]);
+  }, [detectWrongBorders, imageUrl, annotation, horizontalPadding, verticalPadding]);
 
   // Helper function to zoom at a specific mouse position
   const zoomAtPosition = useCallback((mouseX: number, mouseY: number, zoomFactor: number) => {
@@ -873,7 +878,8 @@ export function ImageCanvas({
               })}
               <OverlapRenderer cells={annotation.cells} />
               <BorderConflictRenderer cells={annotation.cells} scale={1} />
-              {detectWrongBorders && <WrongBorderRenderer wrongBorders={wrongBorders} />}
+              <EmptyCellRenderer cells={annotation.cells} />
+              {detectWrongBorders && <WrongBorderRenderer wrongBorders={wrongBorders} horizontalPadding={horizontalPadding} verticalPadding={verticalPadding} />}
               {shouldShowSnapPreview && (
                 <polygon
                   key="snap-preview"

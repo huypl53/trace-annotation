@@ -17,8 +17,6 @@ declare global {
   }
 }
 
-const PADDING = 2;
-const HEIGHT_PADDING = 3;
 
 /**
  * Loads OpenCV.js library dynamically
@@ -176,7 +174,9 @@ async function checkBorderEdge(
   edge: 'top' | 'bottom' | 'left' | 'right',
   imageData: ImageData,
   imageWidth: number,
-  imageHeight: number
+  imageHeight: number,
+  horizontalPadding: number,
+  verticalPadding: number
 ): Promise<boolean> {
   const bounds = cell.getBounds();
   let x1: number, y1: number, x2: number, y2: number;
@@ -188,11 +188,11 @@ async function checkBorderEdge(
     x1 = bounds.minX;
     x2 = bounds.maxX;
     
-    // Create rectangle: from x1+2 to x2-2, height from y-3 to y+3
-    rectX = x1 + PADDING;
-    rectY = y - HEIGHT_PADDING;
-    rectWidth = (x2 - PADDING) - (x1 + PADDING);
-    rectHeight = HEIGHT_PADDING * 2;
+    // Create rectangle: from x1+horizontalPadding to x2-horizontalPadding, height from y-verticalPadding to y+verticalPadding
+    rectX = x1 + horizontalPadding;
+    rectY = y - verticalPadding;
+    rectWidth = (x2 - horizontalPadding) - (x1 + horizontalPadding);
+    rectHeight = verticalPadding * 2;
     
     // Validate dimensions
     if (rectWidth <= 0 || rectHeight <= 0) {
@@ -204,11 +204,11 @@ async function checkBorderEdge(
     y1 = bounds.minY;
     y2 = bounds.maxY;
     
-    // Create rectangle: from y1+2 to y2-2, width from x-3 to x+3
-    rectX = x - HEIGHT_PADDING;
-    rectY = y1 + PADDING;
-    rectWidth = HEIGHT_PADDING * 2;
-    rectHeight = (y2 - PADDING) - (y1 + PADDING);
+    // Create rectangle: from y1+horizontalPadding to y2-horizontalPadding, width from x-verticalPadding to x+verticalPadding
+    rectX = x - verticalPadding;
+    rectY = y1 + horizontalPadding;
+    rectWidth = verticalPadding * 2;
+    rectHeight = (y2 - horizontalPadding) - (y1 + horizontalPadding);
     
     // Validate dimensions
     if (rectWidth <= 0 || rectHeight <= 0) {
@@ -234,7 +234,9 @@ async function checkBorderEdge(
  */
 export async function detectWrongBorders(
   cells: Cell[],
-  imageUrl: string
+  imageUrl: string,
+  horizontalPadding: number = 2,
+  verticalPadding: number = 3
 ): Promise<WrongBorderSegment[]> {
   if (cells.length === 0 || !imageUrl) {
     return [];
@@ -270,7 +272,7 @@ export async function detectWrongBorders(
 
           // Check top edge if invisible
           if (cell.lines.top === 0) {
-            const isWrong = await checkBorderEdge(cell, 'top', imageData, img.width, img.height);
+            const isWrong = await checkBorderEdge(cell, 'top', imageData, img.width, img.height, horizontalPadding, verticalPadding);
             if (isWrong) {
               wrongBorders.push({
                 x1: bounds.minX,
@@ -285,7 +287,7 @@ export async function detectWrongBorders(
 
           // Check bottom edge if invisible
           if (cell.lines.bottom === 0) {
-            const isWrong = await checkBorderEdge(cell, 'bottom', imageData, img.width, img.height);
+            const isWrong = await checkBorderEdge(cell, 'bottom', imageData, img.width, img.height, horizontalPadding, verticalPadding);
             if (isWrong) {
               wrongBorders.push({
                 x1: bounds.minX,
@@ -300,7 +302,7 @@ export async function detectWrongBorders(
 
           // Check left edge if invisible
           if (cell.lines.left === 0) {
-            const isWrong = await checkBorderEdge(cell, 'left', imageData, img.width, img.height);
+            const isWrong = await checkBorderEdge(cell, 'left', imageData, img.width, img.height, horizontalPadding, verticalPadding);
             if (isWrong) {
               wrongBorders.push({
                 x1: bounds.minX,
@@ -315,7 +317,7 @@ export async function detectWrongBorders(
 
           // Check right edge if invisible
           if (cell.lines.right === 0) {
-            const isWrong = await checkBorderEdge(cell, 'right', imageData, img.width, img.height);
+            const isWrong = await checkBorderEdge(cell, 'right', imageData, img.width, img.height, horizontalPadding, verticalPadding);
             if (isWrong) {
               wrongBorders.push({
                 x1: bounds.maxX,

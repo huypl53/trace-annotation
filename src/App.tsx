@@ -30,6 +30,8 @@ function App() {
   const [showCells, setShowCells] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [detectWrongBorders, setDetectWrongBorders] = useState(false);
+  const [horizontalPadding, setHorizontalPadding] = useState(2);
+  const [verticalPadding, setVerticalPadding] = useState(3);
 
   const handleFilesSelected = useCallback((files: File[]) => {
     const newPairs = pairImageXmlFiles(files);
@@ -477,7 +479,7 @@ function App() {
                 <span>Show Cells</span>
               </label>
             </div>
-            <div className="border-detection-controls">
+            <div className="wrong-border-detection-section">
               <label>
                 <input
                   type="checkbox"
@@ -487,6 +489,32 @@ function App() {
                 />
                 <span>Detect Wrong Borders</span>
               </label>
+              {detectWrongBorders && (
+                <div className="padding-controls">
+                  <label className="padding-input-label">
+                    <span>Horizontal Padding:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={horizontalPadding}
+                      onChange={(e) => setHorizontalPadding(Math.max(1, Math.min(20, parseInt(e.target.value) || 2)))}
+                      disabled={!annotation || !currentImageUrl}
+                    />
+                  </label>
+                  <label className="padding-input-label">
+                    <span>Vertical Padding:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={verticalPadding}
+                      onChange={(e) => setVerticalPadding(Math.max(1, Math.min(20, parseInt(e.target.value) || 3)))}
+                      disabled={!annotation || !currentImageUrl}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -511,6 +539,8 @@ function App() {
             snapEnabled={moveSpeedSettings.snapEnabled}
             snapThreshold={moveSpeedSettings.snapThreshold}
             detectWrongBorders={detectWrongBorders}
+            horizontalPadding={horizontalPadding}
+            verticalPadding={verticalPadding}
           />
           <div className="controls-panel">
             {mode === 'move' && (
