@@ -29,6 +29,7 @@ function App() {
   const [mode, setMode] = useState<'move' | 'resize'>('move');
   const [showCells, setShowCells] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [detectWrongBorders, setDetectWrongBorders] = useState(false);
 
   const handleFilesSelected = useCallback((files: File[]) => {
     const newPairs = pairImageXmlFiles(files);
@@ -476,6 +477,17 @@ function App() {
                 <span>Show Cells</span>
               </label>
             </div>
+            <div className="border-detection-controls">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={detectWrongBorders}
+                  onChange={(e) => setDetectWrongBorders(e.target.checked)}
+                  disabled={!annotation || !currentImageUrl}
+                />
+                <span>Detect Wrong Borders</span>
+              </label>
+            </div>
           </div>
         </div>
         <div className="canvas-container">
@@ -498,6 +510,7 @@ function App() {
             showCells={showCells}
             snapEnabled={moveSpeedSettings.snapEnabled}
             snapThreshold={moveSpeedSettings.snapThreshold}
+            detectWrongBorders={detectWrongBorders}
           />
           <div className="controls-panel">
             {mode === 'move' && (
