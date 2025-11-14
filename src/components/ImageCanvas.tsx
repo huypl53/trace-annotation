@@ -820,6 +820,8 @@ export function ImageCanvas({
                 const CORNER_HANDLE_SIZE = 8;
                 const CORNER_HANDLE_COLOR = '#2563eb';
                 const CORNER_HANDLE_FILL = '#ffffff';
+                const CORNER_DOT_SIZE = 3;
+                const CORNER_DOT_COLOR = '#2563eb';
 
                 return (
                   <g
@@ -843,6 +845,18 @@ export function ImageCanvas({
                       }}
                       style={{ cursor: mode === 'resize' ? 'default' : (mode === 'move' ? 'move' : 'default') }}
                     />
+                    {/* Corner dots to indicate corners */}
+                    {cell.points.map((point, index) => (
+                      <circle
+                        key={`corner-dot-${index}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r={CORNER_DOT_SIZE}
+                        fill={CORNER_DOT_COLOR}
+                        stroke="none"
+                        pointerEvents="none"
+                      />
+                    ))}
                     {mode === 'resize' && selected && cell.points.map((point, index) => (
                       <circle
                         key={`corner-${index}`}
