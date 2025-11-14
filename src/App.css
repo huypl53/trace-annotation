@@ -25,12 +25,59 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  transition: width 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 48px;
+  overflow: visible;
+  border-right: 1px solid #ddd;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #ddd;
+  min-height: 57px;
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 16px 8px;
+  justify-content: center;
+  border-bottom: 1px solid #ddd;
 }
 
 .sidebar h2 {
-  padding: 16px;
   font-size: 18px;
-  border-bottom: 1px solid #ddd;
+  margin: 0;
+  flex: 1;
+}
+
+.sidebar.collapsed h2 {
+  display: none;
+}
+
+.sidebar-toggle {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #666;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+}
+
+.sidebar-toggle:hover {
+  background: #e5e7eb;
+  color: #333;
 }
 
 .pair-list {
@@ -714,8 +761,11 @@ body {
   background: white;
   border-left: 1px solid #ddd;
   padding: 16px;
-  overflow-y: hidden;
+  overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .edge-controls h3 {

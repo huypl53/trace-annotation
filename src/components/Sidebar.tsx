@@ -5,13 +5,21 @@ interface SidebarProps {
   onSelectPair: (pairId: string) => void;
   onRemovePair: (pairId: string) => void;
   selectedPairId: string | null;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-export function Sidebar({ pairs, onSelectPair, onRemovePair, selectedPairId }: SidebarProps) {
+export function Sidebar({ pairs, onSelectPair, onRemovePair, selectedPairId, isCollapsed, onToggleCollapse }: SidebarProps) {
   return (
-    <div className="sidebar">
-      <h2>Image/XML Pairs</h2>
-      <div className="pair-list">
+    <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <h2>Image/XML Pairs</h2>
+        <button className="sidebar-toggle" onClick={onToggleCollapse} title={isCollapsed ? 'Show sidebar' : 'Hide sidebar'}>
+          {isCollapsed ? '▶' : '◀'}
+        </button>
+      </div>
+      {!isCollapsed && (
+        <div className="pair-list">
         {pairs.length === 0 ? (
           <p>No pairs loaded</p>
         ) : (
@@ -48,7 +56,8 @@ export function Sidebar({ pairs, onSelectPair, onRemovePair, selectedPairId }: S
             </div>
           ))
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

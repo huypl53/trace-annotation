@@ -51,6 +51,15 @@ export function useAnnotation() {
     });
   }, []);
 
+  const removeCell = useCallback((cellId: string) => {
+    setAnnotation(prev => {
+      if (!prev) return prev;
+      const data = prev.toData();
+      data.cells = data.cells.filter(cell => cell.id !== cellId);
+      return new Annotation(data);
+    });
+  }, []);
+
   return {
     annotation,
     loadAnnotation,
@@ -59,6 +68,7 @@ export function useAnnotation() {
     updateCellLines,
     updateCellPoints,
     createCell,
+    removeCell,
   };
 }
 

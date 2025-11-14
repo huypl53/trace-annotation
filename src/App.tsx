@@ -18,7 +18,7 @@ import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 
 function App() {
-  const { annotation, loadAnnotation, moveCell, updateCellLines, updateCellPoints, createCell } = useAnnotation();
+  const { annotation, loadAnnotation, moveCell, updateCellLines, updateCellPoints, createCell, removeCell } = useAnnotation();
   const { shortcuts, updateShortcut } = useKeyboardShortcuts();
   const { settings: moveSpeedSettings, updateSettings: updateMoveSpeedSettings } = useMoveSpeedSettings();
   const [pairs, setPairs] = useState<ImageXmlPair[]>([]);
@@ -28,6 +28,7 @@ function App() {
   const [isCreatingCell, setIsCreatingCell] = useState(false);
   const [mode, setMode] = useState<'move' | 'resize'>('move');
   const [showCells, setShowCells] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const handleFilesSelected = useCallback((files: File[]) => {
     const newPairs = pairImageXmlFiles(files);
@@ -377,6 +378,8 @@ function App() {
         onSelectPair={handleSelectPair}
         onRemovePair={handleRemovePair}
         selectedPairId={selectedPairId}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
       />
       <div className="main-content">
         <div className="toolbar">
@@ -447,6 +450,19 @@ function App() {
               </button>
               <button onClick={handleExportJson} disabled={!annotation}>
                 Export JSON
+              </button>
+            </div>
+            <div className="cell-actions">
+              <button
+                onClick={() => {
+                  if (selectedCellId) {
+                    removeCell(selectedCellId);
+                    setSelectedCellId(null);
+                  }
+                }}
+                disabled={!annotation || !selectedCellId}
+              >
+                Remove Cell
               </button>
             </div>
             <div className="visibility-controls">
