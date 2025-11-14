@@ -18,7 +18,7 @@ import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 
 function App() {
-  const { annotation, loadAnnotation, moveCell, updateCellLines, updateCellPoints, createCell, removeCell } = useAnnotation();
+  const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity } = useAnnotation();
   const { shortcuts, updateShortcut } = useKeyboardShortcuts();
   const { settings: moveSpeedSettings, updateSettings: updateMoveSpeedSettings } = useMoveSpeedSettings();
   const [pairs, setPairs] = useState<ImageXmlPair[]>([]);
@@ -479,43 +479,6 @@ function App() {
                 <span>Show Cells</span>
               </label>
             </div>
-            <div className="wrong-border-detection-section">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={detectWrongBorders}
-                  onChange={(e) => setDetectWrongBorders(e.target.checked)}
-                  disabled={!annotation || !currentImageUrl}
-                />
-                <span>Detect Wrong Borders</span>
-              </label>
-              {detectWrongBorders && (
-                <div className="padding-controls">
-                  <label className="padding-input-label">
-                    <span>Horizontal Padding:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={horizontalPadding}
-                      onChange={(e) => setHorizontalPadding(Math.max(1, Math.min(20, parseInt(e.target.value) || 2)))}
-                      disabled={!annotation || !currentImageUrl}
-                    />
-                  </label>
-                  <label className="padding-input-label">
-                    <span>Vertical Padding:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={verticalPadding}
-                      onChange={(e) => setVerticalPadding(Math.max(1, Math.min(20, parseInt(e.target.value) || 3)))}
-                      disabled={!annotation || !currentImageUrl}
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
           </div>
         </div>
         <div className="canvas-container">
@@ -550,6 +513,44 @@ function App() {
                 disabled={!annotation}
               />
             )}
+            <div className="wrong-border-detection-section">
+              <h4>Detect Wrong Borders</h4>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={detectWrongBorders}
+                  onChange={(e) => setDetectWrongBorders(e.target.checked)}
+                  disabled={!annotation || !currentImageUrl}
+                />
+                <span>Enable Detection</span>
+              </label>
+              {detectWrongBorders && (
+                <div className="padding-controls">
+                  <label className="padding-input-label">
+                    <span>Horizontal Padding:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={horizontalPadding}
+                      onChange={(e) => setHorizontalPadding(Math.max(1, Math.min(20, parseInt(e.target.value) || 2)))}
+                      disabled={!annotation || !currentImageUrl}
+                    />
+                  </label>
+                  <label className="padding-input-label">
+                    <span>Vertical Padding:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={verticalPadding}
+                      onChange={(e) => setVerticalPadding(Math.max(1, Math.min(20, parseInt(e.target.value) || 3)))}
+                      disabled={!annotation || !currentImageUrl}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
             <EdgeControls
               cell={selectedCell || null}
               onUpdate={lines => {
@@ -562,6 +563,14 @@ function App() {
                   updateCellPoints(selectedCellId, points);
                 }
               }}
+              onUpdateColor={color => {
+                updateAllCellsColor(color);
+              }}
+              onUpdateOpacity={opacity => {
+                updateAllCellsOpacity(opacity);
+              }}
+              globalColor={annotation?.cells[0]?.color}
+              globalOpacity={annotation?.cells[0]?.opacity}
             />
           </div>
         </div>

@@ -8,6 +8,8 @@ export class Cell {
   public endRow: number;
   public startCol: number;
   public endCol: number;
+  public color: string;
+  public opacity: number;
 
   constructor(data: CellData) {
     this.id = data.id;
@@ -17,6 +19,8 @@ export class Cell {
     this.endRow = data.endRow;
     this.startCol = data.startCol;
     this.endCol = data.endCol;
+    this.color = data.color || '#2563eb';
+    this.opacity = data.opacity !== undefined ? data.opacity : 0.1;
   }
 
   getBounds(): { minX: number; minY: number; maxX: number; maxY: number } {
@@ -74,6 +78,8 @@ export class Cell {
       endRow: this.endRow,
       startCol: this.startCol,
       endCol: this.endCol,
+      color: this.color,
+      opacity: this.opacity,
     };
   }
 }

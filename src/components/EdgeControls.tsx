@@ -5,14 +5,53 @@ interface EdgeControlsProps {
   cell: Cell | null;
   onUpdate: (lines: Partial<CellLines>) => void;
   onUpdatePoints: (points: Point[]) => void;
+  onUpdateColor?: (color: string) => void;
+  onUpdateOpacity?: (opacity: number) => void;
+  globalColor?: string;
+  globalOpacity?: number;
 }
 
-export function EdgeControls({ cell, onUpdate, onUpdatePoints }: EdgeControlsProps) {
+export function EdgeControls({ cell, onUpdate, onUpdatePoints, onUpdateColor, onUpdateOpacity, globalColor, globalOpacity }: EdgeControlsProps) {
+  // Use cell's color/opacity if available, otherwise use global values or defaults
+  const displayColor = cell?.color || globalColor || '#2563eb';
+  const displayOpacity = cell?.opacity !== undefined ? cell.opacity : (globalOpacity !== undefined ? globalOpacity : 0.1);
+
   if (!cell) {
     return (
       <div className="edge-controls">
         <h3>Cell Controls</h3>
         <p>Select a cell to edit its properties</p>
+        {onUpdateColor && onUpdateOpacity && (
+          <div className="appearance-section">
+            <h4>Appearance (All Cells)</h4>
+            <div className="appearance-controls">
+              <div className="appearance-group">
+                <label className="appearance-label">Color:</label>
+                <input
+                  type="color"
+                  value={displayColor}
+                  onChange={(e) => onUpdateColor(e.target.value)}
+                  className="color-input"
+                />
+              </div>
+              <div className="appearance-group">
+                <label className="appearance-label">Opacity:</label>
+                <div className="opacity-control">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={displayOpacity}
+                    onChange={(e) => onUpdateOpacity(parseFloat(e.target.value))}
+                    className="opacity-slider"
+                  />
+                  <span className="opacity-value">{(displayOpacity * 100).toFixed(0)}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -194,6 +233,38 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints }: EdgeControlsPro
           </div>
         </div>
       </div>
+
+      {onUpdateColor && onUpdateOpacity && (
+        <div className="appearance-section">
+          <h4>Appearance (All Cells)</h4>
+          <div className="appearance-controls">
+            <div className="appearance-group">
+              <label className="appearance-label">Color:</label>
+              <input
+                type="color"
+                value={displayColor}
+                onChange={(e) => onUpdateColor(e.target.value)}
+                className="color-input"
+              />
+            </div>
+            <div className="appearance-group">
+              <label className="appearance-label">Opacity:</label>
+              <div className="opacity-control">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={displayOpacity}
+                  onChange={(e) => onUpdateOpacity(parseFloat(e.target.value))}
+                  className="opacity-slider"
+                />
+                <span className="opacity-value">{(displayOpacity * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

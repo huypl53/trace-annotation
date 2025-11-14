@@ -18,6 +18,8 @@ export interface CellData {
   endRow: number;
   startCol: number;
   endCol: number;
+  color?: string;
+  opacity?: number;
 }
 
 export interface TableCoords {

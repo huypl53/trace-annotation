@@ -803,8 +803,19 @@ export function ImageCanvas({
                 const isSnappedCell = snappedCellIds.has(cell.id);
                 const VISIBLE_EDGE_COLOR = '#2563eb';
                 const INVISIBLE_EDGE_COLOR = '#94a3b8';
-                const CELL_FILL = 'rgba(37, 99, 235, 0.1)';
-                const SELECTED_FILL = 'rgba(37, 99, 235, 0.2)';
+                
+                // Convert hex color to RGB for rgba
+                const hexToRgb = (hex: string) => {
+                  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                  return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                  } : { r: 37, g: 99, b: 235 };
+                };
+                const rgb = hexToRgb(cell.color);
+                const CELL_FILL = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${cell.opacity})`;
+                const SELECTED_FILL = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.min(cell.opacity * 2, 1)})`;
                 const SNAP_MATCHED_FILL = 'rgba(34, 197, 94, 0.2)';
                 const CORNER_HANDLE_SIZE = 8;
                 const CORNER_HANDLE_COLOR = '#2563eb';
