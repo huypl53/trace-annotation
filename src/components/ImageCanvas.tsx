@@ -13,7 +13,7 @@ interface ImageCanvasProps {
   selectedCellId: string | null;
   onCellSelect: (cellId: string | null) => void;
   onCellMove: (cellId: string, deltaX: number, deltaY: number) => void;
-  onCellMoveEnd: (shouldSnap: boolean, snapDeltaX: number, snapDeltaY: number) => void;
+  onCellMoveEnd: (cellId: string, shouldSnap: boolean, snapDeltaX: number, snapDeltaY: number) => void;
   onCellResize: (cellId: string, points: Point[]) => void;
   onCellResizeEnd: () => void;
   onCreateCell?: (points: Point[]) => void;
@@ -205,7 +205,7 @@ export function ImageCanvas({
         dragState.current.targetEdge || undefined
       );
 
-      if (snapResult.snapped) {
+      if (snapResult.snapped && snapResult.matchedCellId) {
         dragState.current.snapDeltaX = snapResult.deltaX;
         dragState.current.snapDeltaY = snapResult.deltaY;
         // Create preview from current dragged position, then apply snap offset
@@ -235,24 +235,26 @@ export function ImageCanvas({
   const handleCellMouseUp = useCallback(() => {
     if (!dragState.current.cellId) return;
 
+    // Calculate final delta before removing transform
+    const shouldSnap = snapPreview?.show && snapPreview.points.length > 0 && snappedCellId !== null;
+    let finalDeltaX = dragState.current.currentDeltaX;
+    let finalDeltaY = dragState.current.currentDeltaY;
+
     // Remove transform from DOM
     if (dragState.current.cellGroupElement) {
       dragState.current.cellGroupElement.removeAttribute('transform');
     }
 
-    // Calculate final delta
-    const shouldSnap = snapPreview?.show || false;
-    let finalDeltaX = dragState.current.currentDeltaX;
-    let finalDeltaY = dragState.current.currentDeltaY;
-
-    if (shouldSnap) {
-      // snapDeltaX/Y is the total delta from initial position to snapped position
-      // Let onCellMoveEnd handle applying the snap (it will call moveCell)
-      onCellMoveEnd(shouldSnap, dragState.current.snapDeltaX, dragState.current.snapDeltaY);
+    const draggedCellId = dragState.current.cellId;
+    
+    if (shouldSnap && dragState.current.initialCell) {
+      // After transform removal, cell is at original position in data model
+      // snapDeltaX/Y are already relative to initial position, so use them directly
+      onCellMoveEnd(draggedCellId, shouldSnap, dragState.current.snapDeltaX, dragState.current.snapDeltaY);
     } else {
       // No snapping - apply the current drag position
-      onCellMove(dragState.current.cellId, finalDeltaX, finalDeltaY);
-      onCellMoveEnd(false, 0, 0);
+      onCellMove(draggedCellId, finalDeltaX, finalDeltaY);
+      onCellMoveEnd(draggedCellId, false, 0, 0);
     }
 
     // Reset drag state
@@ -273,7 +275,7 @@ export function ImageCanvas({
     };
     setSnapPreview(null);
     setSnappedCellId(null);
-  }, [snapPreview, onCellMove, onCellMoveEnd]);
+  }, [snapPreview, snappedCellId, cells, onCellMove, onCellMoveEnd]);
 
   const handleMouseMoveCombined = (e: React.MouseEvent) => {
     if (isCreating) {

@@ -485,10 +485,10 @@ function App() {
             selectedCellId={selectedCellId}
             onCellSelect={setSelectedCellId}
             onCellMove={moveCell}
-            onCellMoveEnd={(shouldSnap, snapDeltaX, snapDeltaY) => {
-              if (shouldSnap && selectedCellId) {
+            onCellMoveEnd={(cellId, shouldSnap, snapDeltaX, snapDeltaY) => {
+              if (shouldSnap) {
                 // Apply the snap by moving the cell to the snapped position
-                moveCell(selectedCellId, snapDeltaX, snapDeltaY);
+                moveCell(cellId, snapDeltaX, snapDeltaY);
               }
             }}
             onCellResize={updateCellPoints}

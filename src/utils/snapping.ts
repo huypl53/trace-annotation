@@ -56,6 +56,8 @@ export function calculateSnap(
   let bestDistY = Infinity;
   let snapped = false;
   let matchedCellId: string | null = null;
+  let bestMatchCellId: string | null = null;
+  let bestMatchCombinedDist = Infinity;
 
   for (const otherCell of otherCells) {
     if (otherCell.id === draggedCell.id) continue;
@@ -71,68 +73,94 @@ export function calculateSnap(
 
     // Check horizontal snapping (left/right edges)
     if (!targetEdge || targetEdge === 'right') {
-      // Case 1: Dragged cell's right edge is to the left of other cell - only snap if moving right (toward it)
+      // Case 1: Dragged cell's right edge aligns with other cell's left edge
       const distToOtherLeft = Math.abs(newRight - otherLeft);
       if (distToOtherLeft < snapThreshold && distToOtherLeft < bestDistX) {
-        // Check if we're moving toward the other cell (rightward movement)
-        if (deltaX > 0 && draggedBounds.maxX < otherLeft) {
-          bestSnapX = otherLeft - draggedBounds.maxX;
-          bestDistX = distToOtherLeft;
-          snapped = true;
-          matchedCellId = otherCell.id;
+        // If within threshold, snap regardless of movement direction
+        // This ensures snap preview shows when edges are close enough
+        bestSnapX = otherLeft - draggedBounds.maxX;
+        bestDistX = distToOtherLeft;
+        snapped = true;
+        matchedCellId = otherCell.id;
+        // Track best overall match
+        if (distToOtherLeft < bestMatchCombinedDist) {
+          bestMatchCombinedDist = distToOtherLeft;
+          bestMatchCellId = otherCell.id;
         }
       }
     }
 
     if (!targetEdge || targetEdge === 'left') {
-      // Case 2: Dragged cell's left edge is to the right of other cell - only snap if moving left (toward it)
+      // Case 2: Dragged cell's left edge aligns with other cell's right edge
       const distToOtherRight = Math.abs(newLeft - otherRight);
       if (distToOtherRight < snapThreshold && distToOtherRight < bestDistX) {
-        // Check if we're moving toward the other cell (leftward movement)
-        if (deltaX < 0 && draggedBounds.minX > otherRight) {
-          bestSnapX = otherRight - draggedBounds.minX;
-          bestDistX = distToOtherRight;
-          snapped = true;
-          matchedCellId = otherCell.id;
+        // If within threshold, snap regardless of movement direction
+        // This ensures snap preview shows when edges are close enough
+        bestSnapX = otherRight - draggedBounds.minX;
+        bestDistX = distToOtherRight;
+        snapped = true;
+        matchedCellId = otherCell.id;
+        // Track best overall match
+        if (distToOtherRight < bestMatchCombinedDist) {
+          bestMatchCombinedDist = distToOtherRight;
+          bestMatchCellId = otherCell.id;
         }
       }
     }
 
     // Check vertical snapping (top/bottom edges)
     if (!targetEdge || targetEdge === 'bottom') {
-      // Case 3: Dragged cell's bottom edge is above other cell - only snap if moving down (toward it)
+      // Case 3: Dragged cell's bottom edge aligns with other cell's top edge
       const distToOtherTop = Math.abs(newBottom - otherTop);
       if (distToOtherTop < snapThreshold && distToOtherTop < bestDistY) {
-        // Check if we're moving toward the other cell (downward movement)
-        if (deltaY > 0 && draggedBounds.maxY < otherTop) {
-          bestSnapY = otherTop - draggedBounds.maxY;
-          bestDistY = distToOtherTop;
-          snapped = true;
-          matchedCellId = otherCell.id;
+        // If within threshold, snap regardless of movement direction
+        // This ensures snap preview shows when edges are close enough
+        bestSnapY = otherTop - draggedBounds.maxY;
+        bestDistY = distToOtherTop;
+        snapped = true;
+        matchedCellId = otherCell.id;
+        // Track best overall match
+        if (distToOtherTop < bestMatchCombinedDist) {
+          bestMatchCombinedDist = distToOtherTop;
+          bestMatchCellId = otherCell.id;
         }
       }
     }
 
     if (!targetEdge || targetEdge === 'top') {
-      // Case 4: Dragged cell's top edge is below other cell - only snap if moving up (toward it)
+      // Case 4: Dragged cell's top edge aligns with other cell's bottom edge
       const distToOtherBottom = Math.abs(newTop - otherBottom);
       if (distToOtherBottom < snapThreshold && distToOtherBottom < bestDistY) {
-        // Check if we're moving toward the other cell (upward movement)
-        if (deltaY < 0 && draggedBounds.minY > otherBottom) {
-          bestSnapY = otherBottom - draggedBounds.minY;
-          bestDistY = distToOtherBottom;
-          snapped = true;
-          matchedCellId = otherCell.id;
+        // If within threshold, snap regardless of movement direction
+        // This ensures snap preview shows when edges are close enough
+        bestSnapY = otherBottom - draggedBounds.minY;
+        bestDistY = distToOtherBottom;
+        snapped = true;
+        matchedCellId = otherCell.id;
+        // Track best overall match
+        if (distToOtherBottom < bestMatchCombinedDist) {
+          bestMatchCombinedDist = distToOtherBottom;
+          bestMatchCellId = otherCell.id;
         }
       }
     }
+  }
+
+  // Use the best overall match if we have one
+  if (snapped && bestMatchCellId) {
+    matchedCellId = bestMatchCellId;
+  }
+  
+  // Ensure matchedCellId is set if snapped is true (fallback to first matched cell)
+  if (snapped && !matchedCellId && bestMatchCellId) {
+    matchedCellId = bestMatchCellId;
   }
 
   return {
     snapped,
     deltaX: bestSnapX,
     deltaY: bestSnapY,
-    matchedCellId,
+    matchedCellId: matchedCellId || null,
   };
 }
 
