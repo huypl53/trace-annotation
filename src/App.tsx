@@ -301,22 +301,29 @@ function App() {
     
     const loadDefaultFiles = async () => {
       const imageFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.png';
+      const xmlFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.xml';
 
       try {
-        // Fetch only the image file
-        const imageResponse = await fetch(`/${imageFileName}`);
+        // Fetch both files
+        const [imageResponse, xmlResponse] = await Promise.all([
+          fetch(`/${imageFileName}`),
+          fetch(`/${xmlFileName}`),
+        ]);
 
-        if (!imageResponse.ok) {
-          console.warn('Default image file not found, skipping auto-load');
+        if (!imageResponse.ok || !xmlResponse.ok) {
+          console.warn('Default files not found, skipping auto-load');
           return;
         }
 
         // Convert to File object
         const imageBlob = await imageResponse.blob();
-        const imageFile = new File([imageBlob], imageFileName, { type: imageBlob.type });
+        const xmlBlob = await xmlResponse.blob();
 
-        // Load only the image file (not the XML)
-        handleFilesSelected([imageFile]);
+        const imageFile = new File([imageBlob], imageFileName, { type: imageBlob.type });
+        const xmlFile = new File([xmlBlob], xmlFileName, { type: 'text/xml' });
+
+        // Load the files using the existing handler
+        handleFilesSelected([imageFile, xmlFile]);
       } catch (error) {
         console.error('Failed to load default files:', error);
       }

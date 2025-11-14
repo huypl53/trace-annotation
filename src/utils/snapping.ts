@@ -28,6 +28,7 @@ export interface SnapResult {
   deltaX: number;
   deltaY: number;
   matchedCellId: string | null;
+  matchedCellIds: string[]; // Array of all matched cell IDs (for highlighting multiple cells)
 }
 
 export interface CornerSnapResult {
@@ -50,6 +51,7 @@ export function calculateSnap(
       deltaX,
       deltaY,
       matchedCellId: null,
+      matchedCellIds: [],
     };
   }
 
@@ -59,177 +61,130 @@ export function calculateSnap(
   const newTop = draggedBounds.minY + deltaY;
   const newBottom = draggedBounds.maxY + deltaY;
 
-  // Step 1: Find the closest cell by calculating minimum corner-to-corner distance
-  let closestCell: Cell | null = null;
-  let minCornerDistance = Infinity;
-
-  // Calculate corners of dragged cell at new position
-  const draggedCorners = draggedCell.points.map(p => ({
-    x: p.x + deltaX,
-    y: p.y + deltaY,
-  }));
+  // Step 1: Check all cells for edge-to-edge distances (not just closest by corner)
+  // This allows us to find cells close in horizontal AND vertical directions
+  const horizontalSnaps: Array<{ 
+    cellId: string; 
+    type: 'left-right' | 'right-left'; 
+    distance: number; 
+    snapX: number 
+  }> = [];
+  
+  const verticalSnaps: Array<{ 
+    cellId: string; 
+    type: 'top-bottom' | 'bottom-top'; 
+    distance: number; 
+    snapY: number 
+  }> = [];
 
   for (const otherCell of otherCells) {
     if (otherCell.id === draggedCell.id) continue;
 
-    // Calculate minimum corner-to-corner distance between dragged cell and other cell
-    let cellMinDistance = Infinity;
-    for (const draggedCorner of draggedCorners) {
-      for (const otherCorner of otherCell.points) {
-        const distance = Math.sqrt(
-          Math.pow(draggedCorner.x - otherCorner.x, 2) +
-          Math.pow(draggedCorner.y - otherCorner.y, 2)
-        );
-        if (distance < cellMinDistance) {
-          cellMinDistance = distance;
-        }
-      }
+    const otherBounds = otherCell.getBounds();
+    const otherLeft = otherBounds.minX;
+    const otherRight = otherBounds.maxX;
+    const otherTop = otherBounds.minY;
+    const otherBottom = otherBounds.maxY;
+
+    // Check horizontal edge distances
+    // Dragged cell's right edge to other cell's left edge
+    const distRightLeft = Math.abs(newRight - otherLeft);
+    if (distRightLeft < snapThreshold) {
+      horizontalSnaps.push({
+        cellId: otherCell.id,
+        type: 'right-left',
+        distance: distRightLeft,
+        snapX: otherLeft - draggedBounds.maxX,
+      });
     }
 
-    // Track the closest cell
-    if (cellMinDistance < minCornerDistance) {
-      minCornerDistance = cellMinDistance;
-      closestCell = otherCell;
+    // Dragged cell's left edge to other cell's right edge
+    const distLeftRight = Math.abs(newLeft - otherRight);
+    if (distLeftRight < snapThreshold) {
+      horizontalSnaps.push({
+        cellId: otherCell.id,
+        type: 'left-right',
+        distance: distLeftRight,
+        snapX: otherRight - draggedBounds.minX,
+      });
+    }
+
+    // Check vertical edge distances
+    // Dragged cell's bottom edge to other cell's top edge
+    const distBottomTop = Math.abs(newBottom - otherTop);
+    if (distBottomTop < snapThreshold) {
+      verticalSnaps.push({
+        cellId: otherCell.id,
+        type: 'bottom-top',
+        distance: distBottomTop,
+        snapY: otherTop - draggedBounds.maxY,
+      });
+    }
+
+    // Dragged cell's top edge to other cell's bottom edge
+    const distTopBottom = Math.abs(newTop - otherBottom);
+    if (distTopBottom < snapThreshold) {
+      verticalSnaps.push({
+        cellId: otherCell.id,
+        type: 'top-bottom',
+        distance: distTopBottom,
+        snapY: otherBottom - draggedBounds.minY,
+      });
     }
   }
 
-  // If no closest cell found, return no snap
-  if (!closestCell) {
-    return {
-      snapped: false,
-      deltaX,
-      deltaY,
-      matchedCellId: null,
-    };
-  }
-
-  // Step 2: For the closest cell, calculate horizontal and vertical edge distances
-  const otherBounds = closestCell.getBounds();
-  const otherLeft = otherBounds.minX;
-  const otherRight = otherBounds.maxX;
-  const otherTop = otherBounds.minY;
-  const otherBottom = otherBounds.maxY;
-
-  // Calculate all possible horizontal edge distances
-  // Check all edges regardless of targetEdge - we want to find the closest alignment
-  const horizontalDistances: Array<{ type: 'left-right' | 'right-left'; distance: number; snapX: number }> = [];
-
-  // Dragged cell's right edge to other cell's left edge
-  const distRightLeft = Math.abs(newRight - otherLeft);
-  if (distRightLeft < snapThreshold) {
-    horizontalDistances.push({
-      type: 'right-left',
-      distance: distRightLeft,
-      snapX: otherLeft - draggedBounds.maxX,
-    });
-  }
-
-  // Dragged cell's left edge to other cell's right edge
-  const distLeftRight = Math.abs(newLeft - otherRight);
-  if (distLeftRight < snapThreshold) {
-    horizontalDistances.push({
-      type: 'left-right',
-      distance: distLeftRight,
-      snapX: otherRight - draggedBounds.minX,
-    });
-  }
-
-  // Calculate all possible vertical edge distances
-  const verticalDistances: Array<{ type: 'top-bottom' | 'bottom-top'; distance: number; snapY: number }> = [];
-
-  // Dragged cell's bottom edge to other cell's top edge
-  const distBottomTop = Math.abs(newBottom - otherTop);
-  if (distBottomTop < snapThreshold) {
-    verticalDistances.push({
-      type: 'bottom-top',
-      distance: distBottomTop,
-      snapY: otherTop - draggedBounds.maxY,
-    });
-  }
-
-  // Dragged cell's top edge to other cell's bottom edge
-  const distTopBottom = Math.abs(newTop - otherBottom);
-  if (distTopBottom < snapThreshold) {
-    verticalDistances.push({
-      type: 'top-bottom',
-      distance: distTopBottom,
-      snapY: otherBottom - draggedBounds.minY,
-    });
-  }
-
-  // Step 3: Apply snap based on the smallest horizontal OR vertical distance
+  // Step 2: Find the best horizontal and vertical snaps
   let bestSnapX = deltaX;
   let bestSnapY = deltaY;
   let snapped = false;
+  let matchedCellId: string | null = null;
 
-  // Find minimum horizontal distance
-  const minHorizontalDist = horizontalDistances.length > 0
-    ? Math.min(...horizontalDistances.map(d => d.distance))
-    : Infinity;
+  const bestHorizontalSnap = horizontalSnaps.length > 0
+    ? horizontalSnaps.reduce((best, current) => current.distance < best.distance ? current : best)
+    : null;
 
-  // Find minimum vertical distance
-  const minVerticalDist = verticalDistances.length > 0
-    ? Math.min(...verticalDistances.map(d => d.distance))
-    : Infinity;
+  const bestVerticalSnap = verticalSnaps.length > 0
+    ? verticalSnaps.reduce((best, current) => current.distance < best.distance ? current : best)
+    : null;
 
-  // Apply snap based on whichever is smaller (horizontal or vertical)
-  if (minHorizontalDist < Infinity && minVerticalDist < Infinity) {
-    // Both are within threshold - use the smaller one
-    if (minHorizontalDist <= minVerticalDist) {
-      const bestHorizontal = horizontalDistances.find(d => d.distance === minHorizontalDist)!;
-      bestSnapX = bestHorizontal.snapX;
-      snapped = true;
-    } else {
-      const bestVertical = verticalDistances.find(d => d.distance === minVerticalDist)!;
-      bestSnapY = bestVertical.snapY;
-      snapped = true;
+  // Step 3: Apply snaps - if both directions have close cells, snap to both
+  const matchedCellIds: string[] = [];
+  
+  if (bestHorizontalSnap && bestVerticalSnap) {
+    // Both horizontal and vertical snaps are available - apply both
+    bestSnapX = bestHorizontalSnap.snapX;
+    bestSnapY = bestVerticalSnap.snapY;
+    snapped = true;
+    // Collect both cell IDs (they might be the same or different)
+    matchedCellIds.push(bestHorizontalSnap.cellId);
+    if (bestVerticalSnap.cellId !== bestHorizontalSnap.cellId) {
+      matchedCellIds.push(bestVerticalSnap.cellId);
     }
-  } else if (minHorizontalDist < Infinity) {
-    // Only horizontal is within threshold
-    const bestHorizontal = horizontalDistances.find(d => d.distance === minHorizontalDist)!;
-    bestSnapX = bestHorizontal.snapX;
+    // Use the cell with the smaller distance, or prefer horizontal if equal
+    matchedCellId = bestHorizontalSnap.distance <= bestVerticalSnap.distance
+      ? bestHorizontalSnap.cellId
+      : bestVerticalSnap.cellId;
+  } else if (bestHorizontalSnap) {
+    // Only horizontal snap available
+    bestSnapX = bestHorizontalSnap.snapX;
     snapped = true;
-  } else if (minVerticalDist < Infinity) {
-    // Only vertical is within threshold
-    const bestVertical = verticalDistances.find(d => d.distance === minVerticalDist)!;
-    bestSnapY = bestVertical.snapY;
+    matchedCellId = bestHorizontalSnap.cellId;
+    matchedCellIds.push(bestHorizontalSnap.cellId);
+  } else if (bestVerticalSnap) {
+    // Only vertical snap available
+    bestSnapY = bestVerticalSnap.snapY;
     snapped = true;
+    matchedCellId = bestVerticalSnap.cellId;
+    matchedCellIds.push(bestVerticalSnap.cellId);
   }
 
   const result = {
     snapped,
     deltaX: bestSnapX,
     deltaY: bestSnapY,
-    matchedCellId: snapped ? closestCell.id : null,
+    matchedCellId,
+    matchedCellIds,
   };
-
-  // Debug logging
-  if (closestCell) {
-    console.log('[Snap Debug] calculateSnap: Distance analysis');
-    console.log('  draggedCellId:', draggedCell.id);
-    console.log('  closestCellId:', closestCell.id);
-    console.log('  minCornerDistance:', minCornerDistance);
-    console.log('  snapThreshold:', snapThreshold);
-    console.log('  draggedBounds:', { minX: draggedBounds.minX, minY: draggedBounds.minY, maxX: draggedBounds.maxX, maxY: draggedBounds.maxY });
-    console.log('  newPosition:', { newLeft, newRight, newTop, newBottom });
-    console.log('  otherBounds:', { minX: otherLeft, minY: otherTop, maxX: otherRight, maxY: otherBottom });
-    console.log('  edgeDistances (all):', {
-      rightToLeft: distRightLeft,
-      leftToRight: distLeftRight,
-      bottomToTop: distBottomTop,
-      topToBottom: distTopBottom,
-    });
-    console.log('  horizontalDistances (within threshold):', JSON.stringify(horizontalDistances));
-    console.log('  verticalDistances (within threshold):', JSON.stringify(verticalDistances));
-    console.log('  minHorizontalDist:', minHorizontalDist === Infinity ? 'Infinity' : minHorizontalDist);
-    console.log('  minVerticalDist:', minVerticalDist === Infinity ? 'Infinity' : minVerticalDist);
-    console.log('  snapped:', result.snapped);
-    console.log('  matchedCellId:', result.matchedCellId);
-    console.log('  result.deltaX:', result.deltaX, 'result.deltaY:', result.deltaY);
-  } else {
-    console.log('[Snap Debug] calculateSnap: No closest cell found');
-    console.log('  otherCellsCount:', otherCells.length);
-  }
 
   return result;
 }

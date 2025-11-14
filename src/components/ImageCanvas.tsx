@@ -6,6 +6,7 @@ import { Cell } from '../models/Cell';
 import { Point } from '../models/types';
 import { calculateSnap, detectNearestEdge, EdgeType } from '../utils/snapping';
 import { BorderConflictRenderer } from './BorderConflictRenderer';
+import { OverlapRenderer } from './OverlapRenderer';
 
 interface ImageCanvasProps {
   imageUrl: string | null;
@@ -106,6 +107,7 @@ export function ImageCanvas({
 
   const [snapPreview, setSnapPreview] = useState<{ show: boolean; points: { x: number; y: number }[] } | null>(null);
   const [snappedCellId, setSnappedCellId] = useState<string | null>(null);
+  const [snappedCellIds, setSnappedCellIds] = useState<Set<string>>(new Set());
   const cellGroupRefs = useRef<Map<string, SVGGElement>>(new Map());
 
   const { handleCornerMouseDown, handleMouseMove: handleResizeMove, handleMouseUp: handleResizeUp } = useCellResize({
@@ -179,44 +181,24 @@ export function ImageCanvas({
         targetEdge || undefined
       );
       
-      console.log('[Snap Debug] handleCellMouseDown: Initial snap calculation result', {
-        snapped: initialSnapResult.snapped,
-        matchedCellId: initialSnapResult.matchedCellId,
-        deltaX: initialSnapResult.deltaX,
-        deltaY: initialSnapResult.deltaY,
-        snapThresholdInSvg,
-        otherCellsCount: otherCells.length,
-        targetEdge: targetEdge || undefined,
-      });
-      
       if (initialSnapResult.snapped && initialSnapResult.matchedCellId) {
         dragState.current.snapDeltaX = initialSnapResult.deltaX;
         dragState.current.snapDeltaY = initialSnapResult.deltaY;
         const previewCell = new Cell(dragState.current.initialCell!.toData());
         previewCell.move(initialSnapResult.deltaX, initialSnapResult.deltaY);
         const previewPoints = previewCell.points;
-        console.log('[Snap Debug] handleCellMouseDown: Setting snap preview', {
-          snapped: initialSnapResult.snapped,
-          matchedCellId: initialSnapResult.matchedCellId,
-          deltaX: initialSnapResult.deltaX,
-          deltaY: initialSnapResult.deltaY,
-          previewPointsLength: previewPoints.length,
-          previewPoints,
-        });
         setSnapPreview({ show: true, points: previewPoints });
         setSnappedCellId(initialSnapResult.matchedCellId);
+        setSnappedCellIds(new Set(initialSnapResult.matchedCellIds));
       } else {
-        console.log('[Snap Debug] handleCellMouseDown: No snap, clearing preview', {
-          snapped: initialSnapResult.snapped,
-          matchedCellId: initialSnapResult.matchedCellId,
-        });
         setSnapPreview(null);
         setSnappedCellId(null);
+        setSnappedCellIds(new Set());
       }
     } else {
-      console.log('[Snap Debug] handleCellMouseDown: Snap disabled, clearing preview');
       setSnapPreview(null);
       setSnappedCellId(null);
+      setSnappedCellIds(new Set());
     }
   }, [cells, scale, displayOffset, mode, snapEnabled, snapThreshold]);
 
@@ -256,15 +238,6 @@ export function ImageCanvas({
         dragState.current.targetEdge || undefined
       );
 
-      console.log('[Snap Debug] handleCellMouseMove: Snap calculation result');
-      console.log('  snapped:', snapResult.snapped);
-      console.log('  matchedCellId:', snapResult.matchedCellId);
-      console.log('  deltaX:', snapResult.deltaX, 'deltaY:', snapResult.deltaY);
-      console.log('  rawDeltaX:', rawDeltaX, 'rawDeltaY:', rawDeltaY);
-      console.log('  snapThresholdInSvg:', snapThresholdInSvg);
-      console.log('  otherCellsCount:', otherCells.length);
-      console.log('  targetEdge:', dragState.current.targetEdge);
-
       if (snapResult.snapped && snapResult.matchedCellId) {
         dragState.current.snapDeltaX = snapResult.deltaX;
         dragState.current.snapDeltaY = snapResult.deltaY;
@@ -277,29 +250,23 @@ export function ImageCanvas({
         const snapOffsetY = snapResult.deltaY - rawDeltaY;
         currentCell.move(snapOffsetX, snapOffsetY); // Apply snap offset
         const previewPoints = currentCell.points;
-        console.log('[Snap Debug] handleCellMouseMove: Setting snap preview');
-        console.log('  snapped:', snapResult.snapped, 'matchedCellId:', snapResult.matchedCellId);
-        console.log('  deltaX:', snapResult.deltaX, 'deltaY:', snapResult.deltaY);
-        console.log('  rawDeltaX:', rawDeltaX, 'rawDeltaY:', rawDeltaY);
-        console.log('  snapOffsetX:', snapOffsetX, 'snapOffsetY:', snapOffsetY);
-        console.log('  previewPointsLength:', previewPoints.length);
         setSnapPreview({ show: true, points: previewPoints });
         setSnappedCellId(snapResult.matchedCellId);
+        setSnappedCellIds(new Set(snapResult.matchedCellIds));
       } else {
-        console.log('[Snap Debug] handleCellMouseMove: No snap, clearing preview');
-        console.log('  snapped:', snapResult.snapped, 'matchedCellId:', snapResult.matchedCellId);
         dragState.current.snapDeltaX = 0;
         dragState.current.snapDeltaY = 0;
         // Always update state to ensure UI reflects current state
         setSnapPreview(null);
         setSnappedCellId(null);
+        setSnappedCellIds(new Set());
       }
     } else {
-      console.log('[Snap Debug] handleCellMouseMove: Snap disabled, clearing preview');
       dragState.current.snapDeltaX = 0;
       dragState.current.snapDeltaY = 0;
       setSnapPreview(null);
       setSnappedCellId(null);
+      setSnappedCellIds(new Set());
     }
   }, [cells, snapEnabled, snapThreshold]);
 
@@ -308,12 +275,6 @@ export function ImageCanvas({
 
     // Calculate final delta before removing transform
     const shouldSnap = snapPreview?.show && snapPreview.points.length > 0 && snappedCellId !== null;
-    console.log('[Snap Debug] handleCellMouseUp: Checking snap', {
-      shouldSnap,
-      snapPreviewShow: snapPreview?.show,
-      snapPreviewPointsLength: snapPreview?.points?.length,
-      snappedCellId,
-    });
     let finalDeltaX = dragState.current.currentDeltaX;
     let finalDeltaY = dragState.current.currentDeltaY;
 
@@ -350,9 +311,9 @@ export function ImageCanvas({
       snapDeltaX: 0,
       snapDeltaY: 0,
     };
-    console.log('[Snap Debug] handleCellMouseUp: Clearing snap preview');
     setSnapPreview(null);
     setSnappedCellId(null);
+    setSnappedCellIds(new Set());
   }, [snapPreview, snappedCellId, cells, onCellMove, onCellMoveEnd]);
 
   const handleMouseMoveCombined = (e: React.MouseEvent) => {
@@ -426,28 +387,38 @@ export function ImageCanvas({
     setPanOffset({ x: 0, y: 0 });
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    // Only zoom if Ctrl/Cmd is pressed and event is within canvas
-    if (!e.ctrlKey && !e.metaKey) return;
+  // Handle wheel events for zooming (using native listener to allow preventDefault)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    // Check if the event target is within the canvas container
-    const target = e.target as HTMLElement;
-    if (!containerRef.current?.contains(target)) {
-      return; // Don't zoom if scrolling in controls panel or other areas
-    }
+    const handleWheel = (e: WheelEvent) => {
+      // Only zoom if Ctrl/Cmd is pressed and event is within canvas
+      if (!e.ctrlKey && !e.metaKey) return;
 
-    // Prevent browser's default zoom behavior
-    // Note: The document listener also prevents default, but we do it here too
-    // to ensure it's prevented even if the document listener doesn't catch it
-    e.preventDefault();
+      // Check if the event target is within the canvas container
+      const target = e.target as HTMLElement;
+      if (!container.contains(target)) {
+        return; // Don't zoom if scrolling in controls panel or other areas
+      }
 
-    // Perform the zoom
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setUserZoom(prev => {
-      const newZoom = Math.max(0.1, Math.min(5, prev * delta));
-      return newZoom;
-    });
-  };
+      // Prevent browser's default zoom behavior
+      e.preventDefault();
+
+      // Perform the zoom
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setUserZoom(prev => {
+        const newZoom = Math.max(0.1, Math.min(5, prev * delta));
+        return newZoom;
+      });
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Prevent browser zoom when Ctrl+scroll is used over the canvas
   useEffect(() => {
@@ -523,18 +494,7 @@ export function ImageCanvas({
 
   const previewRect = getPreviewRect();
 
-  // Debug logging for snap preview render condition (only log issues)
   const shouldShowSnapPreview = snapEnabled && snapPreview?.show && snapPreview.points.length > 0;
-  if (snapEnabled && snapPreview && !shouldShowSnapPreview) {
-    // Only log when preview exists but condition fails (this is a problem)
-    console.log('[Snap Debug] Render: Preview exists but condition failed', {
-      snapEnabled,
-      snapPreviewShow: snapPreview?.show,
-      snapPreviewPointsLength: snapPreview?.points?.length,
-      shouldShowSnapPreview,
-      snapPreviewPoints: snapPreview?.points,
-    });
-  }
 
   return (
     <div
@@ -544,7 +504,6 @@ export function ImageCanvas({
       onMouseUp={handleMouseUpCombined}
       onMouseDown={handleCanvasMouseDown}
       onMouseLeave={handleMouseUpCombined}
-      onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()} // Prevent context menu on middle click
       style={{ cursor: onCreateCell ? 'crosshair' : 'default' }}
     >
@@ -596,7 +555,7 @@ export function ImageCanvas({
                 const top = bounds.minY;
                 const bottom = bounds.maxY;
                 const selected = cell.id === selectedCellId;
-                const isSnappedCell = cell.id === snappedCellId;
+                const isSnappedCell = snappedCellIds.has(cell.id);
                 const VISIBLE_EDGE_COLOR = '#2563eb';
                 const INVISIBLE_EDGE_COLOR = '#94a3b8';
                 const CELL_FILL = 'rgba(37, 99, 235, 0.1)';
@@ -671,6 +630,7 @@ export function ImageCanvas({
                   </g>
                 );
               })}
+              <OverlapRenderer cells={annotation.cells} />
               <BorderConflictRenderer cells={annotation.cells} scale={1} />
               {shouldShowSnapPreview && (
                 <polygon
