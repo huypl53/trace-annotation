@@ -171,7 +171,7 @@ export function ImageCanvas({
       const otherCells = cells.filter(c => c.id !== cellId);
       const snapThresholdInSvg = snapThreshold / scale;
       const initialSnapResult = calculateSnap(
-        dragState.current.initialCell,
+        dragState.current.initialCell!,
         otherCells,
         0,
         0,
@@ -179,18 +179,42 @@ export function ImageCanvas({
         targetEdge || undefined
       );
       
+      console.log('[Snap Debug] handleCellMouseDown: Initial snap calculation result', {
+        snapped: initialSnapResult.snapped,
+        matchedCellId: initialSnapResult.matchedCellId,
+        deltaX: initialSnapResult.deltaX,
+        deltaY: initialSnapResult.deltaY,
+        snapThresholdInSvg,
+        otherCellsCount: otherCells.length,
+        targetEdge: targetEdge || undefined,
+      });
+      
       if (initialSnapResult.snapped && initialSnapResult.matchedCellId) {
         dragState.current.snapDeltaX = initialSnapResult.deltaX;
         dragState.current.snapDeltaY = initialSnapResult.deltaY;
-        const previewCell = new Cell(dragState.current.initialCell.toData());
+        const previewCell = new Cell(dragState.current.initialCell!.toData());
         previewCell.move(initialSnapResult.deltaX, initialSnapResult.deltaY);
-        setSnapPreview({ show: true, points: previewCell.points });
+        const previewPoints = previewCell.points;
+        console.log('[Snap Debug] handleCellMouseDown: Setting snap preview', {
+          snapped: initialSnapResult.snapped,
+          matchedCellId: initialSnapResult.matchedCellId,
+          deltaX: initialSnapResult.deltaX,
+          deltaY: initialSnapResult.deltaY,
+          previewPointsLength: previewPoints.length,
+          previewPoints,
+        });
+        setSnapPreview({ show: true, points: previewPoints });
         setSnappedCellId(initialSnapResult.matchedCellId);
       } else {
+        console.log('[Snap Debug] handleCellMouseDown: No snap, clearing preview', {
+          snapped: initialSnapResult.snapped,
+          matchedCellId: initialSnapResult.matchedCellId,
+        });
         setSnapPreview(null);
         setSnappedCellId(null);
       }
     } else {
+      console.log('[Snap Debug] handleCellMouseDown: Snap disabled, clearing preview');
       setSnapPreview(null);
       setSnappedCellId(null);
     }
@@ -232,6 +256,15 @@ export function ImageCanvas({
         dragState.current.targetEdge || undefined
       );
 
+      console.log('[Snap Debug] handleCellMouseMove: Snap calculation result');
+      console.log('  snapped:', snapResult.snapped);
+      console.log('  matchedCellId:', snapResult.matchedCellId);
+      console.log('  deltaX:', snapResult.deltaX, 'deltaY:', snapResult.deltaY);
+      console.log('  rawDeltaX:', rawDeltaX, 'rawDeltaY:', rawDeltaY);
+      console.log('  snapThresholdInSvg:', snapThresholdInSvg);
+      console.log('  otherCellsCount:', otherCells.length);
+      console.log('  targetEdge:', dragState.current.targetEdge);
+
       if (snapResult.snapped && snapResult.matchedCellId) {
         dragState.current.snapDeltaX = snapResult.deltaX;
         dragState.current.snapDeltaY = snapResult.deltaY;
@@ -243,9 +276,18 @@ export function ImageCanvas({
         const snapOffsetX = snapResult.deltaX - rawDeltaX; // Offset from current to snapped
         const snapOffsetY = snapResult.deltaY - rawDeltaY;
         currentCell.move(snapOffsetX, snapOffsetY); // Apply snap offset
-        setSnapPreview({ show: true, points: currentCell.points });
+        const previewPoints = currentCell.points;
+        console.log('[Snap Debug] handleCellMouseMove: Setting snap preview');
+        console.log('  snapped:', snapResult.snapped, 'matchedCellId:', snapResult.matchedCellId);
+        console.log('  deltaX:', snapResult.deltaX, 'deltaY:', snapResult.deltaY);
+        console.log('  rawDeltaX:', rawDeltaX, 'rawDeltaY:', rawDeltaY);
+        console.log('  snapOffsetX:', snapOffsetX, 'snapOffsetY:', snapOffsetY);
+        console.log('  previewPointsLength:', previewPoints.length);
+        setSnapPreview({ show: true, points: previewPoints });
         setSnappedCellId(snapResult.matchedCellId);
       } else {
+        console.log('[Snap Debug] handleCellMouseMove: No snap, clearing preview');
+        console.log('  snapped:', snapResult.snapped, 'matchedCellId:', snapResult.matchedCellId);
         dragState.current.snapDeltaX = 0;
         dragState.current.snapDeltaY = 0;
         // Always update state to ensure UI reflects current state
@@ -253,6 +295,7 @@ export function ImageCanvas({
         setSnappedCellId(null);
       }
     } else {
+      console.log('[Snap Debug] handleCellMouseMove: Snap disabled, clearing preview');
       dragState.current.snapDeltaX = 0;
       dragState.current.snapDeltaY = 0;
       setSnapPreview(null);
@@ -265,6 +308,12 @@ export function ImageCanvas({
 
     // Calculate final delta before removing transform
     const shouldSnap = snapPreview?.show && snapPreview.points.length > 0 && snappedCellId !== null;
+    console.log('[Snap Debug] handleCellMouseUp: Checking snap', {
+      shouldSnap,
+      snapPreviewShow: snapPreview?.show,
+      snapPreviewPointsLength: snapPreview?.points?.length,
+      snappedCellId,
+    });
     let finalDeltaX = dragState.current.currentDeltaX;
     let finalDeltaY = dragState.current.currentDeltaY;
 
@@ -301,6 +350,7 @@ export function ImageCanvas({
       snapDeltaX: 0,
       snapDeltaY: 0,
     };
+    console.log('[Snap Debug] handleCellMouseUp: Clearing snap preview');
     setSnapPreview(null);
     setSnappedCellId(null);
   }, [snapPreview, snappedCellId, cells, onCellMove, onCellMoveEnd]);
@@ -473,6 +523,19 @@ export function ImageCanvas({
 
   const previewRect = getPreviewRect();
 
+  // Debug logging for snap preview render condition (only log issues)
+  const shouldShowSnapPreview = snapEnabled && snapPreview?.show && snapPreview.points.length > 0;
+  if (snapEnabled && snapPreview && !shouldShowSnapPreview) {
+    // Only log when preview exists but condition fails (this is a problem)
+    console.log('[Snap Debug] Render: Preview exists but condition failed', {
+      snapEnabled,
+      snapPreviewShow: snapPreview?.show,
+      snapPreviewPointsLength: snapPreview?.points?.length,
+      shouldShowSnapPreview,
+      snapPreviewPoints: snapPreview?.points,
+    });
+  }
+
   return (
     <div
       className="image-canvas"
@@ -609,7 +672,7 @@ export function ImageCanvas({
                 );
               })}
               <BorderConflictRenderer cells={annotation.cells} scale={1} />
-              {snapEnabled && snapPreview?.show && snapPreview.points.length > 0 && (
+              {shouldShowSnapPreview && (
                 <polygon
                   key="snap-preview"
                   points={snapPreview.points.map(p => `${p.x},${p.y}`).join(' ')}
