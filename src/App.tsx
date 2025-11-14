@@ -1,21 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import { EdgeControls } from './components/EdgeControls';
 import { FileUpload } from './components/FileUpload';
 import { ImageCanvas } from './components/ImageCanvas';
+import { MoveSpeedSettings, useMoveSpeedSettings } from './components/MoveSpeedSettings';
 import { ShortcutEditor } from './components/ShortcutEditor';
 import { Sidebar } from './components/Sidebar';
 import { useAnnotation } from './hooks/useAnnotation';
+import { useArrowKeyMovement } from './hooks/useArrowKeyMovement';
 import { normalizeShortcut, parseKeyEvent, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { Cell } from './models/Cell';
 import { ImageXmlPair } from './models/types';
 import { pairImageXmlFiles } from './utils/filePairing';
 import { exportToJson } from './utils/jsonExporter';
+import { calculateSnap } from './utils/snapping';
 import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 
 function App() {
   const { annotation, loadAnnotation, moveCell, updateCellLines, updateCellPoints, createCell } = useAnnotation();
   const { shortcuts, updateShortcut } = useKeyboardShortcuts();
+  const { settings: moveSpeedSettings, updateSettings: updateMoveSpeedSettings } = useMoveSpeedSettings();
   const [pairs, setPairs] = useState<ImageXmlPair[]>([]);
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
@@ -33,9 +38,27 @@ function App() {
     }
 
     setPairs(prev => {
+      // Check for duplicates by filename to prevent adding the same files twice
+      const existingFilenames = new Set(
+        prev.flatMap(p => [
+          p.imageFile.name,
+          p.xmlFile?.name
+        ].filter(Boolean))
+      );
+      
+      const uniqueNewPairs = newPairs.filter(pair => {
+        const imageName = pair.imageFile.name;
+        const xmlName = pair.xmlFile?.name;
+        return !existingFilenames.has(imageName) && (!xmlName || !existingFilenames.has(xmlName));
+      });
+      
+      if (uniqueNewPairs.length === 0) {
+        return prev; // No new pairs to add
+      }
+      
       // Revoke old URLs for pairs that will be replaced
       const existingIds = new Set(prev.map(p => p.id));
-      newPairs.forEach(pair => {
+      uniqueNewPairs.forEach(pair => {
         if (existingIds.has(pair.id)) {
           // Find the old pair and revoke its URL
           const oldPair = prev.find(p => p.id === pair.id);
@@ -44,38 +67,39 @@ function App() {
           }
         }
       });
-      return [...prev, ...newPairs];
-    });
-
-    // Select the first new pair
-    if (newPairs.length > 0) {
-      const firstPair = newPairs[0];
-      setSelectedPairId(firstPair.id);
-      setCurrentImageUrl(firstPair.imageUrl || null);
-      // Load XML if available
-      if (firstPair.xmlFile) {
-        const reader = new FileReader();
-        reader.onload = e => {
-          const xmlString = e.target?.result as string;
-          try {
-            const annotationData = parseXml(xmlString);
-            loadAnnotation(annotationData);
-          } catch (error) {
-            console.error('Failed to parse XML:', error);
-          }
-        };
-        reader.readAsText(firstPair.xmlFile);
-      } else {
-        const filename = firstPair.imageFile.name 
-          ? firstPair.imageFile.name.replace(/\.(png|jpg|jpeg)$/i, '.png')
-          : 'annotation.png';
-        loadAnnotation({
-          filename,
-          tableCoords: { points: [] },
-          cells: [],
-        });
+      
+      // Select the first new pair (use the filtered unique pairs)
+      if (uniqueNewPairs.length > 0) {
+        const firstPair = uniqueNewPairs[0];
+        setSelectedPairId(firstPair.id);
+        setCurrentImageUrl(firstPair.imageUrl || null);
+        // Load XML if available
+        if (firstPair.xmlFile) {
+          const reader = new FileReader();
+          reader.onload = e => {
+            const xmlString = e.target?.result as string;
+            try {
+              const annotationData = parseXml(xmlString);
+              loadAnnotation(annotationData);
+            } catch (error) {
+              console.error('Failed to parse XML:', error);
+            }
+          };
+          reader.readAsText(firstPair.xmlFile);
+        } else {
+          const filename = firstPair.imageFile.name 
+            ? firstPair.imageFile.name.replace(/\.(png|jpg|jpeg)$/i, '.png')
+            : 'annotation.png';
+          loadAnnotation({
+            filename,
+            tableCoords: { points: [] },
+            cells: [],
+          });
+        }
       }
-    }
+      
+      return [...prev, ...uniqueNewPairs];
+    });
   }, [loadAnnotation]);
 
   const handleSelectPair = useCallback((pairId: string) => {
@@ -199,6 +223,114 @@ function App() {
   }, [isCreatingCell, annotation, createCell]);
 
   const selectedCell = annotation?.getCellById(selectedCellId || '');
+
+  // Use refs to store latest values to avoid recreating callbacks
+  const moveSpeedSettingsRef = useRef(moveSpeedSettings);
+  const selectedCellIdRef = useRef(selectedCellId);
+  const modeRef = useRef(mode);
+  const annotationRef = useRef(annotation);
+
+  // Update refs when values change
+  useEffect(() => {
+    moveSpeedSettingsRef.current = moveSpeedSettings;
+  }, [moveSpeedSettings]);
+
+  useEffect(() => {
+    selectedCellIdRef.current = selectedCellId;
+  }, [selectedCellId]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    annotationRef.current = annotation;
+  }, [annotation]);
+
+  // Handle arrow key movement with acceleration in move mode
+  const handleArrowKeyMove = useCallback((deltaX: number, deltaY: number) => {
+    const currentSelectedCellId = selectedCellIdRef.current;
+    const currentMode = modeRef.current;
+    const currentAnnotation = annotationRef.current;
+    const currentSettings = moveSpeedSettingsRef.current;
+
+    if (!currentSelectedCellId || currentMode !== 'move' || !currentAnnotation) return;
+
+    const currentCell = currentAnnotation.getCellById(currentSelectedCellId);
+    if (!currentCell) return;
+
+    // Apply snapping if enabled
+    let finalDeltaX = deltaX;
+    let finalDeltaY = deltaY;
+
+    if (currentSettings.snapEnabled) {
+      const otherCells = currentAnnotation.cells.filter(c => c.id !== currentSelectedCellId);
+      // Create a temporary cell copy to calculate snap position
+      const tempCell = new Cell(currentCell.toData());
+      const snapResult = calculateSnap(
+        tempCell,
+        otherCells,
+        deltaX,
+        deltaY,
+        currentSettings.snapThreshold
+      );
+      finalDeltaX = snapResult.deltaX;
+      finalDeltaY = snapResult.deltaY;
+    }
+
+    moveCell(currentSelectedCellId, finalDeltaX, finalDeltaY);
+  }, [moveCell]);
+
+  useArrowKeyMovement({
+    enabled: mode === 'move' && selectedCellId !== null && !isCreatingCell,
+    onMove: handleArrowKeyMove,
+    baseSpeed: moveSpeedSettings.baseSpeed,
+    maxSpeed: moveSpeedSettings.maxSpeed,
+    acceleration: moveSpeedSettings.acceleration,
+    stepInterval: moveSpeedSettings.stepInterval,
+  });
+
+  // Load default files on mount (only once)
+  const defaultFilesLoadedRef = useRef(false);
+  useEffect(() => {
+    if (defaultFilesLoadedRef.current) return;
+    if (pairs.length > 0) return; // Don't load if pairs already exist
+    
+    defaultFilesLoadedRef.current = true;
+    
+    const loadDefaultFiles = async () => {
+      const imageFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.png';
+      const xmlFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.xml';
+
+      try {
+        // Fetch both files
+        const [imageResponse, xmlResponse] = await Promise.all([
+          fetch(`/${imageFileName}`),
+          fetch(`/${xmlFileName}`),
+        ]);
+
+        if (!imageResponse.ok || !xmlResponse.ok) {
+          console.warn('Default files not found, skipping auto-load');
+          return;
+        }
+
+        // Convert to File objects
+        const imageBlob = await imageResponse.blob();
+        const xmlBlob = await xmlResponse.blob();
+
+        const imageFile = new File([imageBlob], imageFileName, { type: imageBlob.type });
+        const xmlFile = new File([xmlBlob], xmlFileName, { type: 'text/xml' });
+
+        // Load the files using the existing handler
+        handleFilesSelected([imageFile, xmlFile]);
+      } catch (error) {
+        console.error('Failed to load default files:', error);
+      }
+    };
+
+    loadDefaultFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -337,7 +469,12 @@ function App() {
             selectedCellId={selectedCellId}
             onCellSelect={setSelectedCellId}
             onCellMove={moveCell}
-            onCellMoveEnd={() => {}}
+            onCellMoveEnd={(shouldSnap, snapDeltaX, snapDeltaY) => {
+              if (shouldSnap && selectedCellId) {
+                // Apply the snap by moving the cell to the snapped position
+                moveCell(selectedCellId, snapDeltaX, snapDeltaY);
+              }
+            }}
             onCellResize={updateCellPoints}
             onCellResizeEnd={() => {}}
             onCreateCell={isCreatingCell ? handleCreateCellFromPoints : undefined}
@@ -345,6 +482,13 @@ function App() {
             showCells={showCells}
           />
           <div className="controls-panel">
+            {mode === 'move' && (
+              <MoveSpeedSettings
+                settings={moveSpeedSettings}
+                onSettingsChange={updateMoveSpeedSettings}
+                disabled={!annotation}
+              />
+            )}
             <EdgeControls
               cell={selectedCell || null}
               onUpdate={lines => {

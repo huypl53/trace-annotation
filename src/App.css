@@ -714,7 +714,8 @@ body {
   background: white;
   border-left: 1px solid #ddd;
   padding: 16px;
-  overflow-y: auto;
+  overflow-y: hidden;
+  overflow-x: hidden;
 }
 
 .edge-controls h3 {
@@ -743,12 +744,12 @@ body {
 .coordinates-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
-.coordinate-row {
+.coordinate-group {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -756,7 +757,25 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: #666;
-  min-width: 60px;
+}
+
+.coordinate-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coordinate-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.coordinate-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  min-width: 20px;
 }
 
 .coordinate-input {
@@ -765,6 +784,7 @@ body {
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 12px;
+  min-width: 0;
 }
 
 .coordinate-input:focus {
@@ -813,5 +833,78 @@ body {
   background: #2563eb;
   color: white;
   border-color: #2563eb;
+}
+
+.move-speed-settings {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.move-speed-settings h4 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.speed-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.speed-control-group label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.speed-control-group label span {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+}
+
+.speed-control-group input[type="number"] {
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  width: 100%;
+}
+
+.speed-control-group input[type="number"]:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.speed-control-group input[type="number"]:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.speed-control-group .checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.speed-control-group .checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.speed-control-group .checkbox-label:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.speed-control-group .checkbox-label input[type="checkbox"]:disabled {
+  cursor: not-allowed;
 }
 

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useCellCreate } from '../hooks/useCellCreate';
 import { useCellDrag } from '../hooks/useCellDrag';
 import { useCellResize } from '../hooks/useCellResize';
-import { useCellCreate } from '../hooks/useCellCreate';
 import { Annotation } from '../models/Annotation';
 import { Point } from '../models/types';
+import { BorderConflictRenderer } from './BorderConflictRenderer';
 import { CellRenderer } from './CellRenderer';
 
 interface ImageCanvasProps {
@@ -12,7 +13,7 @@ interface ImageCanvasProps {
   selectedCellId: string | null;
   onCellSelect: (cellId: string | null) => void;
   onCellMove: (cellId: string, deltaX: number, deltaY: number) => void;
-  onCellMoveEnd: () => void;
+  onCellMoveEnd: (shouldSnap: boolean, snapDeltaX: number, snapDeltaY: number) => void;
   onCellResize: (cellId: string, points: Point[]) => void;
   onCellResizeEnd: () => void;
   onCreateCell?: (points: Point[]) => void;
@@ -36,26 +37,38 @@ export function ImageCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [originalImageSize, setOriginalImageSize] = useState<{ width: number; height: number } | null>(null);
   const [baseScale, setBaseScale] = useState(1);
   const [userZoom, setUserZoom] = useState(1);
   const [imageOffset, setImageOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   
-  const scale = baseScale * userZoom;
+  // Calculate scale: converts from original image coordinates to current display coordinates
+  // displayWidth = imageSize.width * userZoom (current displayed image width in pixels)
+  // originalImageSize.width = original image width in pixels
+  // scale = how many display pixels per original image pixel
+  const scale = originalImageSize && imageSize
+    ? (imageSize.width * userZoom) / originalImageSize.width
+    : baseScale * userZoom;
 
   const cells = annotation?.cells || [];
 
+  // Calculate display dimensions based on originalImageSize * scale (for consistency)
+  // This will be recalculated later, but we need it here for displayOffset
+  const calculatedDisplayWidth = originalImageSize ? originalImageSize.width * scale : (imageSize ? imageSize.width * userZoom : 0);
+  const calculatedDisplayHeight = originalImageSize ? originalImageSize.height * scale : (imageSize ? imageSize.height * userZoom : 0);
+
   // Calculate display offset for hooks (accounting for zoom)
   // We need to recalculate this when zoom changes to keep cells aligned
-  const displayOffsetX = imageSize && containerRef.current
-    ? (containerRef.current.clientWidth - imageSize.width * userZoom) / 2 + panOffset.x
+  const displayOffsetX = containerRef.current
+    ? (containerRef.current.clientWidth - calculatedDisplayWidth) / 2 + panOffset.x
     : (imageSize ? imageOffset.x + panOffset.x : 0);
-  const displayOffsetY = imageSize && containerRef.current
-    ? (containerRef.current.clientHeight - imageSize.height * userZoom) / 2 + panOffset.y
+  const displayOffsetY = containerRef.current
+    ? (containerRef.current.clientHeight - calculatedDisplayHeight) / 2 + panOffset.y
     : (imageSize ? imageOffset.y + panOffset.y : 0);
   const displayOffset = { x: displayOffsetX, y: displayOffsetY };
 
-  const { handleMouseDown: handleCellMouseDown, handleMouseMove: handleCellMouseMove, handleMouseUp: handleCellMouseUp } = useCellDrag({
+  const { handleMouseDown: handleCellMouseDown, handleMouseMove: handleCellMouseMove, handleMouseUp: handleCellMouseUp, snapPreview } = useCellDrag({
     onDrag: onCellMove,
     onDragEnd: onCellMoveEnd,
     cells,
@@ -74,6 +87,7 @@ export function ImageCanvas({
     cells,
     scale,
     imageOffset: displayOffset,
+    getContainerRect: () => containerRef.current?.getBoundingClientRect() || null,
   });
 
   const { handleMouseDown: handleCreateMouseDown, handleMouseMove: handleCreateMove, handleMouseUp: handleCreateUp, getPreviewRect, isCreating } = useCellCreate({
@@ -133,6 +147,7 @@ export function ImageCanvas({
 
       const baseScaleValue = displayWidth / img.width;
       setImageSize({ width: displayWidth, height: displayHeight });
+      setOriginalImageSize({ width: img.width, height: img.height });
       setImageOffset({ x: offsetX, y: offsetY });
       setBaseScale(baseScaleValue);
       setUserZoom(1);
@@ -164,9 +179,10 @@ export function ImageCanvas({
       return; // Don't zoom if scrolling in controls panel or other areas
     }
     
-    // Prevent browser's default zoom behavior (document listener also does this, but double-check)
+    // Prevent browser's default zoom behavior
+    // Note: The document listener also prevents default, but we do it here too
+    // to ensure it's prevented even if the document listener doesn't catch it
     e.preventDefault();
-    e.stopPropagation();
     
     // Perform the zoom
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -179,25 +195,26 @@ export function ImageCanvas({
   // Prevent browser zoom when Ctrl+scroll is used over the canvas
   useEffect(() => {
     const handleDocumentWheel = (e: WheelEvent) => {
-      // Only prevent browser zoom if Ctrl/Cmd is pressed and we're over the canvas
+      // Only prevent browser zoom if Ctrl/Cmd is pressed
       if (!e.ctrlKey && !e.metaKey) return;
       
+      // Check if the event is over the canvas container or any of its children
       const target = e.target as HTMLElement;
-      if (containerRef.current?.contains(target)) {
+      const container = containerRef.current;
+      
+      if (container && (container === target || container.contains(target))) {
         // Prevent browser's default zoom behavior
-        // We prevent default here to stop browser zoom, but React's synthetic event
-        // system will still receive the event and call handleWheel
+        // React's synthetic event system will still receive the event
         e.preventDefault();
       }
     };
     
     // Use capture phase to catch the event early, before browser handles it
-    // React's event system works with synthetic events, so preventing default
-    // here won't block React from receiving the event
-    window.addEventListener('wheel', handleDocumentWheel, { passive: false, capture: true });
+    // This prevents browser zoom while still allowing React to handle the event
+    document.addEventListener('wheel', handleDocumentWheel, { passive: false, capture: true });
     
     return () => {
-      window.removeEventListener('wheel', handleDocumentWheel, { capture: true });
+      document.removeEventListener('wheel', handleDocumentWheel, { capture: true });
     };
   }, []);
 
@@ -241,15 +258,17 @@ export function ImageCanvas({
     );
   }
 
-  const displayWidth = imageSize ? imageSize.width * userZoom : 0;
-  const displayHeight = imageSize ? imageSize.height * userZoom : 0;
+  // Calculate display dimensions based on originalImageSize * scale
+  // This ensures the SVG viewBox and width/height use the same coordinate system
+  const displayWidth = originalImageSize ? originalImageSize.width * scale : 0;
+  const displayHeight = originalImageSize ? originalImageSize.height * scale : 0;
   
   // Calculate display offset accounting for zoom (keep image centered)
   // When zooming, we need to adjust the offset to keep the image centered
-  const zoomedDisplayOffsetX = imageSize && containerRef.current
+  const zoomedDisplayOffsetX = containerRef.current
     ? (containerRef.current.clientWidth - displayWidth) / 2 + panOffset.x
     : (imageSize ? imageOffset.x + panOffset.x : 0);
-  const zoomedDisplayOffsetY = imageSize && containerRef.current
+  const zoomedDisplayOffsetY = containerRef.current
     ? (containerRef.current.clientHeight - displayHeight) / 2 + panOffset.y
     : (imageSize ? imageOffset.y + panOffset.y : 0);
 
@@ -290,11 +309,14 @@ export function ImageCanvas({
               left: `${zoomedDisplayOffsetX}px`,
               width: `${displayWidth}px`,
               height: `${displayHeight}px`,
+              display: 'block',
             }}
           />
-          {annotation && showCells && (
+          {annotation && showCells && originalImageSize && (
             <svg
               ref={svgRef}
+              viewBox={`0 0 ${originalImageSize.width} ${originalImageSize.height}`}
+              preserveAspectRatio="none"
               style={{
                 position: 'absolute',
                 top: `${zoomedDisplayOffsetY}px`,
@@ -308,7 +330,7 @@ export function ImageCanvas({
                 <CellRenderer
                   key={cell.id}
                   cell={cell}
-                  scale={scale}
+                  scale={1}
                   onMouseDown={mode === 'move' ? handleCellMouseDown : undefined}
                   onClick={(e, cellId) => {
                     e.stopPropagation();
@@ -319,23 +341,37 @@ export function ImageCanvas({
                   showResizeHandles={mode === 'resize'}
                 />
               ))}
+              <BorderConflictRenderer cells={annotation.cells} scale={1} />
+              {snapPreview?.show && snapPreview.points.length > 0 && (
+                <polygon
+                  key="snap-preview"
+                  points={snapPreview.points.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="rgba(34, 197, 94, 0.15)"
+                  stroke="rgba(34, 197, 94, 0.8)"
+                  strokeWidth={2 * (originalImageSize.width / displayWidth)}
+                  strokeDasharray={`${4 * (originalImageSize.width / displayWidth)},${4 * (originalImageSize.width / displayWidth)}`}
+                  pointerEvents="none"
+                />
+              )}
               {previewRect && (
                 <rect
-                  x={previewRect.x * scale}
-                  y={previewRect.y * scale}
-                  width={previewRect.width * scale}
-                  height={previewRect.height * scale}
+                  x={previewRect.x}
+                  y={previewRect.y}
+                  width={previewRect.width}
+                  height={previewRect.height}
                   fill="rgba(0, 123, 255, 0.2)"
                   stroke="rgba(0, 123, 255, 0.8)"
-                  strokeWidth={2}
-                  strokeDasharray="4,4"
+                  strokeWidth={2 * (originalImageSize.width / displayWidth)}
+                  strokeDasharray={`${4 * (originalImageSize.width / displayWidth)},${4 * (originalImageSize.width / displayWidth)}`}
                   pointerEvents="none"
                 />
               )}
             </svg>
           )}
-          {!annotation && previewRect && (
+          {!annotation && previewRect && originalImageSize && (
             <svg
+              viewBox={`0 0 ${originalImageSize.width} ${originalImageSize.height}`}
+              preserveAspectRatio="none"
               style={{
                 position: 'absolute',
                 top: `${zoomedDisplayOffsetY}px`,
@@ -346,14 +382,14 @@ export function ImageCanvas({
               }}
             >
               <rect
-                x={previewRect.x * scale}
-                y={previewRect.y * scale}
-                width={previewRect.width * scale}
-                height={previewRect.height * scale}
+                x={previewRect.x}
+                y={previewRect.y}
+                width={previewRect.width}
+                height={previewRect.height}
                 fill="rgba(0, 123, 255, 0.2)"
                 stroke="rgba(0, 123, 255, 0.8)"
-                strokeWidth={2}
-                strokeDasharray="4,4"
+                strokeWidth={2 * (originalImageSize.width / displayWidth)}
+                strokeDasharray={`${4 * (originalImageSize.width / displayWidth)},${4 * (originalImageSize.width / displayWidth)}`}
                 pointerEvents="none"
               />
             </svg>

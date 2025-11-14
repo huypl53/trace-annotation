@@ -22,12 +22,74 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints }: EdgeControlsPro
     onUpdate({ [edge]: newValue });
   };
 
-  const handlePointChange = (index: number, field: 'x' | 'y', value: string) => {
+  const bounds = cell.getBounds();
+  const topLeft = { x: bounds.minX, y: bounds.minY };
+  const bottomRight = { x: bounds.maxX, y: bounds.maxY };
+
+  // Find the indices of all 4 corners
+  const findClosestPointIndex = (targetX: number, targetY: number): number => {
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    cell.points.forEach((point, index) => {
+      const distance = Math.sqrt(
+        Math.pow(point.x - targetX, 2) + Math.pow(point.y - targetY, 2)
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = index;
+      }
+    });
+    return closestIndex;
+  };
+
+  const topLeftIndex = findClosestPointIndex(topLeft.x, topLeft.y);
+  const bottomRightIndex = findClosestPointIndex(bottomRight.x, bottomRight.y);
+  
+  // Find top-right and bottom-left indices
+  const topRight = { x: bounds.maxX, y: bounds.minY };
+  const bottomLeft = { x: bounds.minX, y: bounds.maxY };
+  const topRightIndex = findClosestPointIndex(topRight.x, topRight.y);
+  const bottomLeftIndex = findClosestPointIndex(bottomLeft.x, bottomLeft.y);
+
+  const handleTopLeftChange = (field: 'x' | 'y', value: string) => {
     const numValue = parseFloat(value);
     if (isNaN(numValue)) return;
 
     const newPoints = [...cell.points];
-    newPoints[index] = { ...newPoints[index], [field]: numValue };
+    
+    // Update top-left
+    newPoints[topLeftIndex] = { ...newPoints[topLeftIndex], [field]: numValue };
+    
+    // Update related corners to maintain rectangle shape
+    if (field === 'x') {
+      // When top-left X changes, update bottom-left X to match (same left edge)
+      newPoints[bottomLeftIndex] = { ...newPoints[bottomLeftIndex], x: numValue };
+    } else {
+      // When top-left Y changes, update top-right Y to match (same top edge)
+      newPoints[topRightIndex] = { ...newPoints[topRightIndex], y: numValue };
+    }
+    
+    onUpdatePoints(newPoints);
+  };
+
+  const handleBottomRightChange = (field: 'x' | 'y', value: string) => {
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return;
+
+    const newPoints = [...cell.points];
+    
+    // Update bottom-right
+    newPoints[bottomRightIndex] = { ...newPoints[bottomRightIndex], [field]: numValue };
+    
+    // Update related corners to maintain rectangle shape
+    if (field === 'x') {
+      // When bottom-right X changes, update top-right X to match (same right edge)
+      newPoints[topRightIndex] = { ...newPoints[topRightIndex], x: numValue };
+    } else {
+      // When bottom-right Y changes, update bottom-left Y to match (same bottom edge)
+      newPoints[bottomLeftIndex] = { ...newPoints[bottomLeftIndex], y: numValue };
+    }
+    
     onUpdatePoints(newPoints);
   };
 
@@ -38,25 +100,56 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints }: EdgeControlsPro
       <div className="coordinates-section">
         <h4>Coordinates</h4>
         <div className="coordinates-list">
-          {cell.points.map((point, index) => (
-            <div key={index} className="coordinate-row">
-              <span className="coordinate-label">Point {index + 1}:</span>
-              <input
-                type="number"
-                value={point.x}
-                onChange={e => handlePointChange(index, 'x', e.target.value)}
-                className="coordinate-input"
-                step="0.1"
-              />
-              <input
-                type="number"
-                value={point.y}
-                onChange={e => handlePointChange(index, 'y', e.target.value)}
-                className="coordinate-input"
-                step="0.1"
-              />
+          <div className="coordinate-group">
+            <span className="coordinate-label">Top Left:</span>
+            <div className="coordinate-inputs">
+              <div className="coordinate-input-row">
+                <label className="coordinate-field-label">X:</label>
+                <input
+                  type="number"
+                  value={cell.points[topLeftIndex].x.toFixed(1)}
+                  onChange={e => handleTopLeftChange('x', e.target.value)}
+                  className="coordinate-input"
+                  step="0.1"
+                />
+              </div>
+              <div className="coordinate-input-row">
+                <label className="coordinate-field-label">Y:</label>
+                <input
+                  type="number"
+                  value={cell.points[topLeftIndex].y.toFixed(1)}
+                  onChange={e => handleTopLeftChange('y', e.target.value)}
+                  className="coordinate-input"
+                  step="0.1"
+                />
+              </div>
             </div>
-          ))}
+          </div>
+          <div className="coordinate-group">
+            <span className="coordinate-label">Bottom Right:</span>
+            <div className="coordinate-inputs">
+              <div className="coordinate-input-row">
+                <label className="coordinate-field-label">X:</label>
+                <input
+                  type="number"
+                  value={cell.points[bottomRightIndex].x.toFixed(1)}
+                  onChange={e => handleBottomRightChange('x', e.target.value)}
+                  className="coordinate-input"
+                  step="0.1"
+                />
+              </div>
+              <div className="coordinate-input-row">
+                <label className="coordinate-field-label">Y:</label>
+                <input
+                  type="number"
+                  value={cell.points[bottomRightIndex].y.toFixed(1)}
+                  onChange={e => handleBottomRightChange('y', e.target.value)}
+                  className="coordinate-input"
+                  step="0.1"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
