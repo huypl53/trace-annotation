@@ -165,9 +165,36 @@ export function ImageCanvas({
       snapDeltaX: 0,
       snapDeltaY: 0,
     };
-    setSnapPreview(null);
-    setSnappedCellId(null);
-  }, [cells, scale, displayOffset, mode]);
+    
+    // Check for initial snap position (when delta is 0) to show preview immediately if cell is already close
+    if (snapEnabled) {
+      const otherCells = cells.filter(c => c.id !== cellId);
+      const snapThresholdInSvg = snapThreshold / scale;
+      const initialSnapResult = calculateSnap(
+        dragState.current.initialCell,
+        otherCells,
+        0,
+        0,
+        snapThresholdInSvg,
+        targetEdge || undefined
+      );
+      
+      if (initialSnapResult.snapped && initialSnapResult.matchedCellId) {
+        dragState.current.snapDeltaX = initialSnapResult.deltaX;
+        dragState.current.snapDeltaY = initialSnapResult.deltaY;
+        const previewCell = new Cell(dragState.current.initialCell.toData());
+        previewCell.move(initialSnapResult.deltaX, initialSnapResult.deltaY);
+        setSnapPreview({ show: true, points: previewCell.points });
+        setSnappedCellId(initialSnapResult.matchedCellId);
+      } else {
+        setSnapPreview(null);
+        setSnappedCellId(null);
+      }
+    } else {
+      setSnapPreview(null);
+      setSnappedCellId(null);
+    }
+  }, [cells, scale, displayOffset, mode, snapEnabled, snapThreshold]);
 
   const handleCellMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragState.current.cellId || !dragState.current.initialCell || !dragState.current.cellGroupElement) return;
@@ -221,7 +248,8 @@ export function ImageCanvas({
       } else {
         dragState.current.snapDeltaX = 0;
         dragState.current.snapDeltaY = 0;
-        setSnapPreview({ show: false, points: [] });
+        // Always update state to ensure UI reflects current state
+        setSnapPreview(null);
         setSnappedCellId(null);
       }
     } else {
