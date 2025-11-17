@@ -15,13 +15,13 @@ import { useArrowKeyMovement } from './hooks/useArrowKeyMovement';
 import { normalizeShortcut, parseKeyEvent, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { Cell } from './models/Cell';
 import { ImageXmlPair } from './models/types';
+import { deleteFile, downloadFile, listFiles, uploadFiles } from './utils/fileApi';
 import { pairImageXmlFiles } from './utils/filePairing';
 import { exportToJson } from './utils/jsonExporter';
+import { findOverlappingCellGroup } from './utils/polygonIntersection';
 import { calculateSnap } from './utils/snapping';
 import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
-import { findOverlappingCellGroup } from './utils/polygonIntersection';
-import { listFiles, downloadFile, deleteFile, uploadFiles } from './utils/fileApi';
 
 function App() {
   const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
@@ -40,34 +40,58 @@ function App() {
   const [verticalPadding, setVerticalPadding] = useState(3);
   const [imageZoom, setImageZoom] = useState(1);
   const [imageScale, setImageScale] = useState(1);
+  const [scaledImageUrl, setScaledImageUrl] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingPairSwitch, setPendingPairSwitch] = useState<string | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const lastSavedAnnotationRef = useRef<string | null>(null);
+  const isLoadingPairRef = useRef(false);
+  const scaledImageBlobUrlRef = useRef<string | null>(null);
   
-  const handleSetImageScale = useCallback((scale: number) => {
-    setImageScale(scale);
+  // Clean up blob URL when component unmounts or image changes
+  useEffect(() => {
+    return () => {
+      if (scaledImageBlobUrlRef.current) {
+        URL.revokeObjectURL(scaledImageBlobUrlRef.current);
+        scaledImageBlobUrlRef.current = null;
+      }
+    };
   }, []);
 
-  // Download scaled image
-  const handleDownloadScaledImage = useCallback(async () => {
-    if (!currentImageUrl) {
-      return;
+  // Clean up scaled image when currentImageUrl changes
+  useEffect(() => {
+    if (scaledImageBlobUrlRef.current) {
+      URL.revokeObjectURL(scaledImageBlobUrlRef.current);
+      scaledImageBlobUrlRef.current = null;
+    }
+    setScaledImageUrl(null);
+  }, [currentImageUrl]);
+
+  // Create scaled image from original image URL
+  const createScaledImage = useCallback(async (imageUrl: string, scale: number): Promise<string> => {
+    // Clean up old blob URL if exists
+    if (scaledImageBlobUrlRef.current) {
+      URL.revokeObjectURL(scaledImageBlobUrlRef.current);
+      scaledImageBlobUrlRef.current = null;
+    }
+
+    // If scale is 1, return original URL
+    if (scale === 1) {
+      return imageUrl;
     }
 
     try {
-      // Load the image
+      // Load the original image
       const img = new Image();
-      
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = reject;
-        img.src = currentImageUrl;
+        img.src = imageUrl;
       });
 
       // Calculate scaled dimensions
-      const scaledWidth = Math.round(img.width * imageScale);
-      const scaledHeight = Math.round(img.height * imageScale);
+      const scaledWidth = Math.round(img.width * scale);
+      const scaledHeight = Math.round(img.height * scale);
 
       // Create canvas and draw scaled image
       const canvas = document.createElement('canvas');
@@ -85,6 +109,90 @@ function App() {
       
       // Draw the scaled image
       ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+
+      // Convert to blob and create URL
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Failed to create blob'));
+            return;
+          }
+          
+          const url = URL.createObjectURL(blob);
+          scaledImageBlobUrlRef.current = url;
+          resolve(url);
+        }, 'image/png');
+      });
+    } catch (error) {
+      console.error('Failed to create scaled image:', error);
+      throw error;
+    }
+  }, []);
+
+  const handleSetImageScale = useCallback(async (scale: number) => {
+    setImageScale(scale);
+    
+    if (!currentImageUrl) {
+      return;
+    }
+
+    // If scale is 1, use original image
+    if (scale === 1) {
+      // Clean up old blob URL
+      if (scaledImageBlobUrlRef.current) {
+        URL.revokeObjectURL(scaledImageBlobUrlRef.current);
+        scaledImageBlobUrlRef.current = null;
+      }
+      setScaledImageUrl(null);
+      return;
+    }
+
+    try {
+      const scaledUrl = await createScaledImage(currentImageUrl, scale);
+      setScaledImageUrl(scaledUrl);
+    } catch (error) {
+      console.error('Failed to apply image scale:', error);
+      alert('Failed to apply image scale. Please try again.');
+      // Reset to original scale on error
+      setImageScale(1);
+      setScaledImageUrl(null);
+    }
+  }, [currentImageUrl, createScaledImage]);
+
+  // Download scaled image
+  const handleDownloadScaledImage = useCallback(async () => {
+    // Use scaled image if available, otherwise use original
+    const imageToDownload = scaledImageUrl || currentImageUrl;
+    if (!imageToDownload) {
+      return;
+    }
+
+    try {
+      // Load the image
+      const img = new Image();
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageToDownload;
+      });
+
+      // Create canvas and draw image (already scaled if scaledImageUrl is used)
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
+      }
+
+      // Use high-quality image scaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Draw the image
+      ctx.drawImage(img, 0, 0);
 
       // Convert to blob and download
       canvas.toBlob((blob) => {
@@ -106,7 +214,7 @@ function App() {
       console.error('Failed to download scaled image:', error);
       alert('Failed to download scaled image. Please try again.');
     }
-  }, [currentImageUrl, imageScale]);
+  }, [scaledImageUrl, currentImageUrl, imageScale]);
   
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -173,6 +281,7 @@ function App() {
         setCurrentImageUrl(firstPair.imageUrl || null);
         setImageZoom(1); // Reset zoom when loading new image
         setImageScale(1); // Reset scale when loading new image
+        setScaledImageUrl(null); // Reset scaled image when loading new image
         // Load XML if available
         if (firstPair.xmlFile) {
           const reader = new FileReader();
@@ -206,9 +315,11 @@ function App() {
     setSelectedPairId(pairId);
     const pair = pairs.find(p => p.id === pairId);
     if (pair) {
+      isLoadingPairRef.current = true;
       setCurrentImageUrl(pair.imageUrl || null);
       setImageZoom(1); // Reset zoom when selecting a different image
       setImageScale(1); // Reset scale when selecting a different image
+      setScaledImageUrl(null); // Reset scaled image when selecting a different image
       if (pair.xmlFile) {
         const reader = new FileReader();
         reader.onload = e => {
@@ -216,10 +327,17 @@ function App() {
           try {
             const annotationData = parseXml(xmlString);
             loadAnnotation(annotationData);
-            lastSavedAnnotationRef.current = xmlString;
+            // Set saved state to the exported XML from the loaded annotation
+            // This ensures we compare apples to apples
+            const exportedXml = exportToXml(annotationData);
+            lastSavedAnnotationRef.current = exportedXml;
             setHasUnsavedChanges(false);
+            isLoadingPairRef.current = false;
           } catch (error) {
             console.error('Failed to parse XML:', error);
+            lastSavedAnnotationRef.current = null;
+            setHasUnsavedChanges(true);
+            isLoadingPairRef.current = false;
           }
         };
         reader.readAsText(pair.xmlFile);
@@ -234,6 +352,7 @@ function App() {
         });
         lastSavedAnnotationRef.current = null;
         setHasUnsavedChanges(true);
+        isLoadingPairRef.current = false;
       }
     }
     setPendingPairSwitch(null);
@@ -249,6 +368,20 @@ function App() {
     }
   }, [hasUnsavedChanges, selectedPairId, performPairSwitch]);
 
+  // Normalize XML string for comparison (remove whitespace differences)
+  const normalizeXml = useCallback((xml: string): string => {
+    // Parse and re-export to normalize formatting
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xml, 'text/xml');
+      const serializer = new XMLSerializer();
+      return serializer.serializeToString(doc);
+    } catch {
+      // If parsing fails, return original
+      return xml;
+    }
+  }, []);
+
   const handleSaveXml = useCallback(async () => {
     if (!annotation) return;
     
@@ -258,16 +391,8 @@ function App() {
       const blob = new Blob([xmlString], { type: 'text/xml' });
       const xmlFile = new File([blob], xmlFilename, { type: 'text/xml' });
       
-      // Save to server
+      // Save to server only
       await uploadFiles([xmlFile]);
-      
-      // Also download to local machine
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = xmlFilename;
-      a.click();
-      URL.revokeObjectURL(url);
       
       // Mark as saved
       lastSavedAnnotationRef.current = xmlString;
@@ -281,19 +406,8 @@ function App() {
         return pair;
       }));
     } catch (error) {
-      // If server upload fails, still allow download
-      const xmlString = exportToXml(annotation.toData());
-      const xmlFilename = annotation.filename.replace(/\.(png|jpg|jpeg)$/i, '.xml');
-      const blob = new Blob([xmlString], { type: 'text/xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = xmlFilename;
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      lastSavedAnnotationRef.current = xmlString;
-      setHasUnsavedChanges(false);
+      console.error('Failed to save XML to server:', error);
+      // Don't mark as saved if upload fails
     }
   }, [annotation, selectedPairId]);
 
@@ -371,6 +485,7 @@ function App() {
           handleSelectPair(newPairs[0].id);
         } else {
           setCurrentImageUrl(null);
+          setScaledImageUrl(null);
           loadAnnotation({
             filename: '',
             tableCoords: { points: [] },
@@ -391,6 +506,11 @@ function App() {
 
   // Track annotation changes to detect unsaved changes
   useEffect(() => {
+    // Skip comparison if we're currently loading a new pair
+    if (isLoadingPairRef.current) {
+      return;
+    }
+
     if (!annotation) {
       setHasUnsavedChanges(false);
       lastSavedAnnotationRef.current = null;
@@ -401,7 +521,10 @@ function App() {
     
     // If we have a saved reference, compare with current
     if (lastSavedAnnotationRef.current !== null) {
-      setHasUnsavedChanges(currentXml !== lastSavedAnnotationRef.current);
+      // Compare normalized XML strings to account for formatting differences
+      const normalizedCurrent = normalizeXml(currentXml);
+      const normalizedSaved = normalizeXml(lastSavedAnnotationRef.current);
+      setHasUnsavedChanges(normalizedCurrent !== normalizedSaved);
     } else {
       // No saved reference means this is a new annotation without XML file
       // performPairSwitch will have already set hasUnsavedChanges, but we ensure it here too
@@ -410,7 +533,7 @@ function App() {
         setHasUnsavedChanges(true);
       }
     }
-  }, [annotation, pairs, selectedPairId]);
+  }, [annotation, pairs, selectedPairId, normalizeXml]);
 
   const handleExportXml = useCallback(() => {
     handleSaveXml();
@@ -937,7 +1060,7 @@ function App() {
         </div>
         <div className="canvas-container">
           <ImageCanvas
-            imageUrl={currentImageUrl}
+            imageUrl={scaledImageUrl || currentImageUrl}
             annotation={annotation}
             selectedCellIds={selectedCellIds}
             onCellSelect={(cellIds) => {
