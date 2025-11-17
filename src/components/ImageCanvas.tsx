@@ -183,6 +183,20 @@ export function ImageCanvas({
     imageOffset: displayOffset,
     getContainerRect: () => containerRef.current?.getBoundingClientRect() || null,
     imageSize: imageSize ? { width: imageSize.width / baseScale, height: imageSize.height / baseScale } : null,
+    cells,
+    snapEnabled,
+    snapThreshold,
+    onSnapPreview: (preview) => {
+      if (preview) {
+        setSnapPreview({ show: preview.show, points: preview.points });
+        setSnappedCellId(preview.matchedCellId);
+        setSnappedCellIds(new Set(preview.matchedCellIds));
+      } else {
+        setSnapPreview(null);
+        setSnappedCellId(null);
+        setSnappedCellIds(new Set());
+      }
+    },
   });
 
   // Direct DOM manipulation for cell dragging
@@ -857,7 +871,11 @@ export function ImageCanvas({
                 const MAX_HANDLE_SIZE = 20; // Maximum size in SVG coordinates
                 const CORNER_HANDLE_SIZE = Math.max(MIN_HANDLE_SIZE, Math.min(MAX_HANDLE_SIZE, BASE_CORNER_HANDLE_SIZE / scale));
                 const CORNER_HANDLE_STROKE_WIDTH = Math.max(0.5, Math.min(5, BASE_CORNER_HANDLE_STROKE_WIDTH / scale));
-                const CORNER_DOT_SIZE = Math.max(1, Math.min(10, BASE_CORNER_DOT_SIZE / scale));
+                // Scale corner dots inversely with zoom to maintain consistent visual size on screen
+                // Higher minimum size ensures visibility at all zoom levels
+                const MIN_DOT_SIZE = 2.5; // Minimum size in SVG coordinates to ensure visibility
+                const MAX_DOT_SIZE = 8; // Maximum size in SVG coordinates
+                const CORNER_DOT_SIZE = Math.max(MIN_DOT_SIZE, Math.min(MAX_DOT_SIZE, BASE_CORNER_DOT_SIZE / scale));
 
                 return (
                   <g

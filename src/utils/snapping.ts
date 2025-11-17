@@ -45,6 +45,16 @@ export interface ResizeEdgeSnapResult {
   matchedCellIds: string[];
 }
 
+export interface CreateSnapResult {
+  snapped: boolean;
+  snappedMinX: number;
+  snappedMinY: number;
+  snappedMaxX: number;
+  snappedMaxY: number;
+  matchedCellId: string | null;
+  matchedCellIds: string[];
+}
+
 export function calculateSnap(
   draggedCell: Cell,
   otherCells: Cell[],
@@ -489,6 +499,225 @@ export function calculateResizeEdgeSnap(
     snapped,
     snappedX,
     snappedY,
+    matchedCellId,
+    matchedCellIds,
+  };
+}
+
+/**
+ * Calculates edge-to-edge snapping for newly created cells
+ * When creating a cell by dragging, adjusts the cell bounds to align with nearby cells
+ * @param minX Minimum X coordinate of the new cell
+ * @param minY Minimum Y coordinate of the new cell
+ * @param maxX Maximum X coordinate of the new cell
+ * @param maxY Maximum Y coordinate of the new cell
+ * @param otherCells Other cells to snap to
+ * @param snapThreshold The snap threshold in original image coordinates
+ */
+export function calculateCreateSnap(
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  otherCells: Cell[],
+  snapThreshold: number = DEFAULT_SNAP_THRESHOLD
+): CreateSnapResult {
+  if (otherCells.length === 0) {
+    return {
+      snapped: false,
+      snappedMinX: minX,
+      snappedMinY: minY,
+      snappedMaxX: maxX,
+      snappedMaxY: maxY,
+      matchedCellId: null,
+      matchedCellIds: [],
+    };
+  }
+
+  const horizontalSnaps: Array<{
+    cellId: string;
+    type: 'left' | 'right';
+    edge: 'left' | 'right';
+    distance: number;
+    snapValue: number;
+  }> = [];
+
+  const verticalSnaps: Array<{
+    cellId: string;
+    type: 'top' | 'bottom';
+    edge: 'top' | 'bottom';
+    distance: number;
+    snapValue: number;
+  }> = [];
+
+  for (const otherCell of otherCells) {
+    const otherBounds = otherCell.getBounds();
+    const otherLeft = otherBounds.minX;
+    const otherRight = otherBounds.maxX;
+    const otherTop = otherBounds.minY;
+    const otherBottom = otherBounds.maxY;
+
+    // Check horizontal edge alignment
+    // New cell's left edge to other cell's right edge
+    const distLeftRight = Math.abs(minX - otherRight);
+    if (distLeftRight < snapThreshold) {
+      horizontalSnaps.push({
+        cellId: otherCell.id,
+        type: 'left',
+        edge: 'left',
+        distance: distLeftRight,
+        snapValue: otherRight, // Snap left edge to other's right edge
+      });
+    }
+
+    // New cell's left edge to other cell's left edge
+    const distLeftLeft = Math.abs(minX - otherLeft);
+    if (distLeftLeft < snapThreshold) {
+      horizontalSnaps.push({
+        cellId: otherCell.id,
+        type: 'left',
+        edge: 'left',
+        distance: distLeftLeft,
+        snapValue: otherLeft, // Snap left edge to other's left edge
+      });
+    }
+
+    // New cell's right edge to other cell's left edge
+    const distRightLeft = Math.abs(maxX - otherLeft);
+    if (distRightLeft < snapThreshold) {
+      horizontalSnaps.push({
+        cellId: otherCell.id,
+        type: 'right',
+        edge: 'right',
+        distance: distRightLeft,
+        snapValue: otherLeft, // Snap right edge to other's left edge
+      });
+    }
+
+    // New cell's right edge to other cell's right edge
+    const distRightRight = Math.abs(maxX - otherRight);
+    if (distRightRight < snapThreshold) {
+      horizontalSnaps.push({
+        cellId: otherCell.id,
+        type: 'right',
+        edge: 'right',
+        distance: distRightRight,
+        snapValue: otherRight, // Snap right edge to other's right edge
+      });
+    }
+
+    // Check vertical edge alignment
+    // New cell's top edge to other cell's bottom edge
+    const distTopBottom = Math.abs(minY - otherBottom);
+    if (distTopBottom < snapThreshold) {
+      verticalSnaps.push({
+        cellId: otherCell.id,
+        type: 'top',
+        edge: 'top',
+        distance: distTopBottom,
+        snapValue: otherBottom, // Snap top edge to other's bottom edge
+      });
+    }
+
+    // New cell's top edge to other cell's top edge
+    const distTopTop = Math.abs(minY - otherTop);
+    if (distTopTop < snapThreshold) {
+      verticalSnaps.push({
+        cellId: otherCell.id,
+        type: 'top',
+        edge: 'top',
+        distance: distTopTop,
+        snapValue: otherTop, // Snap top edge to other's top edge
+      });
+    }
+
+    // New cell's bottom edge to other cell's top edge
+    const distBottomTop = Math.abs(maxY - otherTop);
+    if (distBottomTop < snapThreshold) {
+      verticalSnaps.push({
+        cellId: otherCell.id,
+        type: 'bottom',
+        edge: 'bottom',
+        distance: distBottomTop,
+        snapValue: otherTop, // Snap bottom edge to other's top edge
+      });
+    }
+
+    // New cell's bottom edge to other cell's bottom edge
+    const distBottomBottom = Math.abs(maxY - otherBottom);
+    if (distBottomBottom < snapThreshold) {
+      verticalSnaps.push({
+        cellId: otherCell.id,
+        type: 'bottom',
+        edge: 'bottom',
+        distance: distBottomBottom,
+        snapValue: otherBottom, // Snap bottom edge to other's bottom edge
+      });
+    }
+  }
+
+  // Find the best horizontal and vertical snaps
+  const bestHorizontalSnap = horizontalSnaps.length > 0
+    ? horizontalSnaps.reduce((best, current) => current.distance < best.distance ? current : best)
+    : null;
+
+  const bestVerticalSnap = verticalSnaps.length > 0
+    ? verticalSnaps.reduce((best, current) => current.distance < best.distance ? current : best)
+    : null;
+
+  let snappedMinX = minX;
+  let snappedMinY = minY;
+  let snappedMaxX = maxX;
+  let snappedMaxY = maxY;
+  let snapped = false;
+  let matchedCellId: string | null = null;
+  const matchedCellIds: string[] = [];
+
+  if (bestHorizontalSnap) {
+    if (bestHorizontalSnap.edge === 'left') {
+      // Adjust left edge, keep width constant by adjusting right edge
+      const width = maxX - minX;
+      snappedMinX = bestHorizontalSnap.snapValue;
+      snappedMaxX = snappedMinX + width;
+    } else {
+      // Adjust right edge, keep width constant by adjusting left edge
+      const width = maxX - minX;
+      snappedMaxX = bestHorizontalSnap.snapValue;
+      snappedMinX = snappedMaxX - width;
+    }
+    snapped = true;
+    matchedCellIds.push(bestHorizontalSnap.cellId);
+    matchedCellId = bestHorizontalSnap.cellId;
+  }
+
+  if (bestVerticalSnap) {
+    if (bestVerticalSnap.edge === 'top') {
+      // Adjust top edge, keep height constant by adjusting bottom edge
+      const height = maxY - minY;
+      snappedMinY = bestVerticalSnap.snapValue;
+      snappedMaxY = snappedMinY + height;
+    } else {
+      // Adjust bottom edge, keep height constant by adjusting top edge
+      const height = maxY - minY;
+      snappedMaxY = bestVerticalSnap.snapValue;
+      snappedMinY = snappedMaxY - height;
+    }
+    snapped = true;
+    if (!matchedCellIds.includes(bestVerticalSnap.cellId)) {
+      matchedCellIds.push(bestVerticalSnap.cellId);
+    }
+    // Prefer the cell with smaller distance, or horizontal if equal
+    if (!matchedCellId || (bestVerticalSnap.distance < (bestHorizontalSnap?.distance || Infinity))) {
+      matchedCellId = bestVerticalSnap.cellId;
+    }
+  }
+
+  return {
+    snapped,
+    snappedMinX,
+    snappedMinY,
+    snappedMaxX,
+    snappedMaxY,
     matchedCellId,
     matchedCellIds,
   };

@@ -1,5 +1,7 @@
 import { useRef, useCallback, useState } from 'react';
 import { Point } from '../models/types';
+import { Cell } from '../models/Cell';
+import { calculateCreateSnap } from '../utils/snapping';
 
 interface UseCellCreateOptions {
   onCreateCell: (points: Point[]) => void;
@@ -7,6 +9,10 @@ interface UseCellCreateOptions {
   imageOffset: { x: number; y: number };
   getContainerRect?: () => DOMRect | null;
   imageSize: { width: number; height: number } | null;
+  cells?: Cell[];
+  snapEnabled?: boolean;
+  snapThreshold?: number;
+  onSnapPreview?: (preview: { show: boolean; points: Point[]; matchedCellId: string | null; matchedCellIds: string[] } | null) => void;
 }
 
 export function useCellCreate({
@@ -15,6 +21,10 @@ export function useCellCreate({
   imageOffset,
   getContainerRect,
   imageSize,
+  cells = [],
+  snapEnabled = true,
+  snapThreshold = 5,
+  onSnapPreview,
 }: UseCellCreateOptions) {
   const [isCreating, setIsCreating] = useState(false);
   const [, forceUpdate] = useState(0);
@@ -61,6 +71,11 @@ export function useCellCreate({
       e.preventDefault();
       e.stopPropagation();
 
+      // Clear snap preview when starting to create
+      if (onSnapPreview) {
+        onSnapPreview(null);
+      }
+
       setIsCreating(true);
       createState.current = {
         startX: originalX,
@@ -71,7 +86,7 @@ export function useCellCreate({
         scale, // Store scale at create start
       };
     },
-    [scale, imageOffset, getContainerRect, imageSize]
+    [scale, imageOffset, getContainerRect, imageSize, onSnapPreview]
   );
 
   const handleMouseMove = useCallback(
@@ -94,27 +109,97 @@ export function useCellCreate({
 
       createState.current.currentX = originalX;
       createState.current.currentY = originalY;
+
+      // Calculate snap preview if enabled
+      if (snapEnabled && cells.length > 0 && onSnapPreview) {
+        const { startX, startY, currentX, currentY } = createState.current;
+        const minX = Math.min(startX, currentX);
+        const maxX = Math.max(startX, currentX);
+        const minY = Math.min(startY, currentY);
+        const maxY = Math.max(startY, currentY);
+
+        const width = maxX - minX;
+        const height = maxY - minY;
+
+        // Only show snap preview if rectangle has minimum size
+        if (width > 5 && height > 5) {
+          const snapThresholdInSvg = snapThreshold / storedScale;
+          const snapResult = calculateCreateSnap(
+            minX,
+            minY,
+            maxX,
+            maxY,
+            cells,
+            snapThresholdInSvg
+          );
+
+          if (snapResult.snapped) {
+            // Create preview points with snapped bounds
+            const previewPoints: Point[] = [
+              { x: snapResult.snappedMinX, y: snapResult.snappedMinY }, // top-left
+              { x: snapResult.snappedMaxX, y: snapResult.snappedMinY }, // top-right
+              { x: snapResult.snappedMaxX, y: snapResult.snappedMaxY }, // bottom-right
+              { x: snapResult.snappedMinX, y: snapResult.snappedMaxY }, // bottom-left
+            ];
+            onSnapPreview({
+              show: true,
+              points: previewPoints,
+              matchedCellId: snapResult.matchedCellId,
+              matchedCellIds: snapResult.matchedCellIds,
+            });
+          } else {
+            onSnapPreview(null);
+          }
+        } else {
+          onSnapPreview(null);
+        }
+      } else if (onSnapPreview) {
+        onSnapPreview(null);
+      }
+
       // Force re-render to update preview
       forceUpdate(prev => prev + 1);
     },
-    [getContainerRect, imageSize, isCreating]
+    [getContainerRect, imageSize, isCreating, cells, snapEnabled, snapThreshold, onSnapPreview]
   );
 
   const handleMouseUp = useCallback(() => {
     if (!isCreating) return;
 
     const { startX, startY, currentX, currentY } = createState.current;
+    const storedScale = createState.current.scale;
 
     // Calculate rectangle bounds
-    const minX = Math.min(startX, currentX);
-    const maxX = Math.max(startX, currentX);
-    const minY = Math.min(startY, currentY);
-    const maxY = Math.max(startY, currentY);
+    let minX = Math.min(startX, currentX);
+    let maxX = Math.max(startX, currentX);
+    let minY = Math.min(startY, currentY);
+    let maxY = Math.max(startY, currentY);
 
     // Only create cell if the rectangle has a minimum size
     const width = maxX - minX;
     const height = maxY - minY;
     if (width > 5 && height > 5) {
+      // Apply snap if enabled
+      if (snapEnabled && cells.length > 0) {
+        // Convert snap threshold from display pixels to SVG coordinates
+        const snapThresholdInSvg = snapThreshold / storedScale;
+        const snapResult = calculateCreateSnap(
+          minX,
+          minY,
+          maxX,
+          maxY,
+          cells,
+          snapThresholdInSvg
+        );
+
+        if (snapResult.snapped) {
+          minX = snapResult.snappedMinX;
+          minY = snapResult.snappedMinY;
+          maxX = snapResult.snappedMaxX;
+          maxY = snapResult.snappedMaxY;
+        }
+      }
+
       // Create cell with 4 points (rectangle)
       const points: Point[] = [
         { x: minX, y: minY }, // top-left
@@ -126,6 +211,9 @@ export function useCellCreate({
     }
 
     // Reset state
+    if (onSnapPreview) {
+      onSnapPreview(null);
+    }
     setIsCreating(false);
     createState.current = {
       startX: 0,
@@ -135,7 +223,7 @@ export function useCellCreate({
       imageOffset: { x: 0, y: 0 },
       scale: 1,
     };
-  }, [onCreateCell, isCreating]);
+  }, [onCreateCell, isCreating, cells, snapEnabled, snapThreshold, onSnapPreview]);
 
   const getPreviewRect = useCallback((): { x: number; y: number; width: number; height: number } | null => {
     if (!isCreating) return null;
