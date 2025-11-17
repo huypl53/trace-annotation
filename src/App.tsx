@@ -49,6 +49,7 @@ function App() {
   const lastSavedAnnotationRef = useRef<string | null>(null);
   const isLoadingPairRef = useRef(false);
   const scaledImageBlobUrlRef = useRef<string | null>(null);
+  const copiedCellsRef = useRef<import('./models/types').CellData[]>([]);
   
   // Clean up blob URL when component unmounts or image changes
   useEffect(() => {
@@ -891,6 +892,57 @@ function App() {
         return;
       }
       
+      // Handle Ctrl+C to copy selected cells
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        if (annotation && selectedCellIds.size > 0) {
+          e.preventDefault();
+          const cellsToCopy = Array.from(selectedCellIds)
+            .map(id => annotation.getCellById(id))
+            .filter((cell): cell is Cell => cell !== undefined)
+            .map(cell => cell.toData());
+          copiedCellsRef.current = cellsToCopy;
+        }
+        return;
+      }
+      
+      // Handle Ctrl+V to paste copied cells
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if (annotation && copiedCellsRef.current.length > 0) {
+          e.preventDefault();
+          // Calculate offset to place pasted cells slightly offset from originals
+          const PASTE_OFFSET = 30;
+          
+          // Find the minimum x and y of all copied cells to calculate offset
+          let minX = Infinity;
+          let minY = Infinity;
+          copiedCellsRef.current.forEach(cell => {
+            cell.points.forEach(point => {
+              minX = Math.min(minX, point.x);
+              minY = Math.min(minY, point.y);
+            });
+          });
+          
+          // Create new cells with offset positions and new IDs
+          const newCellIds: string[] = [];
+          copiedCellsRef.current.forEach(cell => {
+            const newCell: import('./models/types').CellData = {
+              ...cell,
+              id: `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              points: cell.points.map(point => ({
+                x: point.x + PASTE_OFFSET,
+                y: point.y + PASTE_OFFSET,
+              })),
+            };
+            createCell(newCell);
+            newCellIds.push(newCell.id);
+          });
+          
+          // Select the newly pasted cells
+          setSelectedCellIds(new Set(newCellIds));
+        }
+        return;
+      }
+      
       // Handle Tab key to cycle through overlapping cells
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (annotation && selectedCellIds.size === 1) {
@@ -997,11 +1049,23 @@ function App() {
           });
         }
       }
+      
+      // Handle Delete key to remove selected cells
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (annotation && selectedCellIds.size > 0) {
+          e.preventDefault();
+          selectedCellIds.forEach(cellId => {
+            removeCell(cellId);
+          });
+          overlappingGroupRef.current = null;
+          setSelectedCellIds(new Set());
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings]);
+  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings, createCell, removeCell]);
 
   return (
     <div className="app">
@@ -1136,7 +1200,7 @@ function App() {
                 }}
                 disabled={!annotation || selectedCellIds.size === 0}
                 className="toolbar-button toolbar-button-danger"
-                title="Remove selected cell(s)"
+                title="Remove selected cell(s) (Delete or Backspace)"
               >
                 <span className="button-icon">🗑</span>
                 <span className="button-text">Remove {selectedCellIds.size > 1 ? `${selectedCellIds.size}` : ''}</span>

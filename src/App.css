@@ -300,6 +300,14 @@ body {
     gap: 6px;
   }
   
+  .toolbar:not(.collapsed) {
+    padding-left: 40px;
+  }
+  
+  .toolbar-header {
+    left: 4px;
+  }
+  
   .toolbar-button .button-text {
     display: none;
   }
@@ -316,6 +324,46 @@ body {
   
   .toolbar-checkbox .checkbox-label {
     display: none;
+  }
+  
+  .toolbar-divider {
+    display: none;
+  }
+  
+  .toolbar-group {
+    gap: 4px;
+  }
+  
+  .shortcut-editor {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar {
+    padding: 4px 6px;
+    gap: 4px;
+  }
+  
+  .toolbar-section {
+    gap: 2px;
+  }
+  
+  .toolbar-button {
+    padding: 5px 6px;
+    min-width: 28px;
+  }
+  
+  .button-icon {
+    font-size: 14px;
+  }
+  
+  .mode-buttons button {
+    padding: 5px 6px;
+  }
+  
+  .mode-buttons button .button-text {
+    font-size: 10px;
   }
 }
 

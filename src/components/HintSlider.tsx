@@ -14,11 +14,12 @@ const hints: Hint[] = [
   { id: '5', text: '⌨️ Use Arrow Keys to move selected cells (speed increases while held)' },
   { id: '6', text: '🔗 Enable "Snap to Nearby Cells" to automatically align cells when moving' },
   { id: '7', text: '↩️ Press Ctrl+Z to undo and Ctrl+Y to redo your actions' },
-  { id: '8', text: '⚙️ Customize keyboard shortcuts by clicking on the shortcut keys in the toolbar' },
-  { id: '9', text: '🎨 Adjust move speed settings in Move Mode for precise cell positioning' },
-  { id: '10', text: '🔍 Enable "Detect Wrong Borders" to highlight cells with incorrect padding' },
-  { id: '11', text: '📐 Edit cell coordinates directly in the right panel for precise positioning' },
-  { id: '12', text: '👁️ Toggle edge visibility to show/hide cell borders in the final output' },
+  { id: '8', text: '📋 Press Ctrl+C to copy selected cells and Ctrl+V to paste them' },
+  { id: '9', text: '⚙️ Customize keyboard shortcuts by clicking on the shortcut keys in the toolbar' },
+  { id: '10', text: '🎨 Adjust move speed settings in Move Mode for precise cell positioning' },
+  { id: '11', text: '🔍 Enable "Detect Wrong Borders" to highlight cells with incorrect padding' },
+  { id: '12', text: '📐 Edit cell coordinates directly in the right panel for precise positioning' },
+  { id: '13', text: '👁️ Toggle edge visibility to show/hide cell borders in the final output' },
 ];
 
 export function HintSlider() {
