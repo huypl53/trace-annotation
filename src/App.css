@@ -1024,6 +1024,45 @@ body {
   position: relative;
 }
 
+.snap-status-indicator {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+  pointer-events: none;
+}
+
+.snap-status-label {
+  color: #666;
+}
+
+.snap-status-value {
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.snap-status-value.enabled {
+  color: #059669;
+  background: #d1fae5;
+}
+
+.snap-status-value.disabled {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
 .image-canvas {
   flex: 1;
   display: flex;

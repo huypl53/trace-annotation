@@ -986,11 +986,22 @@ function App() {
           }
         }
       }
+      
+      // Handle S key to toggle snap (only when not in input and not Ctrl+S)
+      if (e.key === 's' || e.key === 'S') {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          updateMoveSpeedSettings({
+            ...moveSpeedSettings,
+            snapEnabled: !moveSpeedSettings.snapEnabled,
+          });
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds]);
+  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings]);
 
   return (
     <div className="app">
@@ -1203,6 +1214,13 @@ function App() {
             externalZoom={imageZoom}
             onZoomChange={setImageZoom}
           />
+          {/* Snap status indicator - always visible */}
+          <div className="snap-status-indicator" title={`Snap to Nearby Cells: ${moveSpeedSettings.snapEnabled ? 'ON' : 'OFF'} (Press S to toggle)`}>
+            <span className="snap-status-label">Snap:</span>
+            <span className={`snap-status-value ${moveSpeedSettings.snapEnabled ? 'enabled' : 'disabled'}`}>
+              {moveSpeedSettings.snapEnabled ? 'ON' : 'OFF'}
+            </span>
+          </div>
           <div className={`controls-panel ${isControlsPanelCollapsed ? 'collapsed' : ''}`}>
             <div className="controls-panel-header">
               <button 
