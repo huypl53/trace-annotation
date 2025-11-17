@@ -114,6 +114,7 @@ function extractRegion(
 
 /**
  * Detects if there are patterns (contours) in a border region using OpenCV
+ * Also checks if the region is mostly empty (white/light pixels)
  */
 async function detectPatternsInRegion(region: ImageData): Promise<boolean> {
   if (!window.cv) {
@@ -122,6 +123,29 @@ async function detectPatternsInRegion(region: ImageData): Promise<boolean> {
 
   try {
     const cv = window.cv;
+
+    // First, check if region is mostly empty (white/light pixels)
+    // This helps identify truly empty regions
+    const totalPixels = region.width * region.height;
+    let lightPixels = 0;
+    const lightThreshold = 240; // Consider pixels with brightness > 240 as "light"
+
+    for (let i = 0; i < region.data.length; i += 4) {
+      // Calculate grayscale value
+      const r = region.data[i];
+      const g = region.data[i + 1];
+      const b = region.data[i + 2];
+      const brightness = (r + g + b) / 3;
+      if (brightness > lightThreshold) {
+        lightPixels++;
+      }
+    }
+
+    const lightPixelRatio = lightPixels / totalPixels;
+    // If more than 90% of pixels are light, consider it empty (no patterns)
+    if (lightPixelRatio > 0.9) {
+      return false;
+    }
 
     // Convert ImageData to OpenCV Mat
     const src = cv.matFromImageData(region);
@@ -199,15 +223,15 @@ async function detectLineInRegion(
     const primaryDimension = isHorizontal ? width : height;
     const secondaryDimension = isHorizontal ? height : width;
 
-    // More lenient adaptive parameters
-    // Adaptive threshold: proportional to primary dimension (lower threshold)
-    const threshold = Math.max(5, Math.floor(primaryDimension * 0.2));
+    // More lenient adaptive parameters for better line detection
+    // Adaptive threshold: proportional to primary dimension (lower threshold for smaller regions)
+    const threshold = Math.max(3, Math.floor(primaryDimension * 0.15));
 
-    // Adaptive minLineLength: proportional to primary dimension (shorter lines)
-    const minLineLength = Math.max(3, Math.floor(primaryDimension * 0.3));
+    // Adaptive minLineLength: proportional to primary dimension (shorter lines allowed)
+    const minLineLength = Math.max(2, Math.floor(primaryDimension * 0.25));
 
     // Adaptive maxLineGap: proportional to secondary dimension (larger gaps allowed)
-    const maxLineGap = Math.max(1, Math.floor(secondaryDimension * 0.5));
+    const maxLineGap = Math.max(1, Math.floor(secondaryDimension * 0.6));
 
     // Apply HoughLinesP
     const lines = new cv.Mat();
@@ -222,7 +246,7 @@ async function detectLineInRegion(
     );
 
     // Filter lines by orientation to match the edge direction
-    const angleThreshold = Math.PI / 6; // 30 degrees tolerance
+    const angleThreshold = Math.PI / 4; // 45 degrees tolerance (more lenient)
     let hasMatchingLine = false;
 
     for (let i = 0; i < lines.rows; i++) {

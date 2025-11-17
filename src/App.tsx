@@ -46,6 +46,7 @@ function App() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingPairSwitch, setPendingPairSwitch] = useState<string | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [saveNotification, setSaveNotification] = useState<{ show: boolean; message: string } | null>(null);
   const lastSavedAnnotationRef = useRef<string | null>(null);
   const isLoadingPairRef = useRef(false);
   const scaledImageBlobUrlRef = useRef<string | null>(null);
@@ -497,6 +498,14 @@ function App() {
       lastSavedAnnotationRef.current = xmlString;
       setHasUnsavedChanges(false);
       
+      // Show success notification
+      setSaveNotification({ show: true, message: 'XML saved successfully!' });
+      
+      // Auto-hide notification after 3 seconds
+      setTimeout(() => {
+        setSaveNotification(null);
+      }, 3000);
+      
       // Update the pair to include the XML file if it doesn't exist
       setPairs(prev => prev.map(pair => {
         if (pair.id === selectedPairId && !pair.xmlFile) {
@@ -507,6 +516,11 @@ function App() {
     } catch (error) {
       console.error('Failed to save XML to server:', error);
       // Don't mark as saved if upload fails
+      // Show error notification
+      setSaveNotification({ show: true, message: 'Failed to save XML. Please try again.' });
+      setTimeout(() => {
+        setSaveNotification(null);
+      }, 3000);
     }
   }, [annotation, selectedPairId, scaledImageUrl, currentImageUrl, imageScale, createScaledImage]);
 
@@ -1431,6 +1445,21 @@ function App() {
           onDiscard={handleUnsavedDialogDiscard}
           onCancel={handleUnsavedDialogCancel}
         />
+      )}
+      {saveNotification && (
+        <div className={`conversion-result ${saveNotification.message.includes('successfully') ? 'success' : 'error'}`}>
+          <div className="conversion-result-header">
+            <span className="conversion-icon">{saveNotification.message.includes('successfully') ? '✓' : '✕'}</span>
+            <span className="conversion-message">{saveNotification.message}</span>
+          </div>
+          <button
+            className="conversion-close"
+            onClick={() => setSaveNotification(null)}
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );
