@@ -76,9 +76,17 @@ export async function uploadFiles(files: File[]): Promise<UploadResponse> {
 
 /**
  * Download a file from the server
+ * @param filename - The name of the file to download
+ * @param noCache - If true, adds cache-busting query parameter to ensure fresh download
  */
-export async function downloadFile(filename: string): Promise<File> {
-  const response = await fetch(`${API_BASE_URL}/files/${filename}`);
+export async function downloadFile(filename: string, noCache: boolean = false): Promise<File> {
+  const url = noCache 
+    ? `${API_BASE_URL}/files/${filename}?t=${Date.now()}`
+    : `${API_BASE_URL}/files/${filename}`;
+  
+  const response = await fetch(url, {
+    cache: noCache ? 'no-store' : 'default',
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to download file: ${filename}`);

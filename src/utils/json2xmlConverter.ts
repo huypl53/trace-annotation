@@ -1,4 +1,4 @@
-import { AnnotationData, Point, CellData, TableCoords } from '../models/types';
+import { AnnotationData, CellData, TableCoords } from '../models/types';
 
 interface JsonTableData {
   type?: string;
@@ -206,7 +206,18 @@ export class JsonToXmlConverter {
    * Determine border visibility for each side of a cell
    */
   private determineCellBorders(
-    cellData: JsonTableData['properties']['cellData'] extends Record<string, infer T> ? T : never | undefined,
+    cellData: {
+      cellStyle?: {
+        borderTopWidth?: number | null;
+        borderBottomWidth?: number | null;
+        borderLeftWidth?: number | null;
+        borderRightWidth?: number | null;
+        borderTopStyle?: string | null;
+        borderBottomStyle?: string | null;
+        borderLeftStyle?: string | null;
+        borderRightStyle?: string | null;
+      };
+    } | undefined,
     tableProperties: JsonTableData['properties']
   ): [number, number, number, number] {
     if (!tableProperties) return [0, 0, 0, 0];
@@ -271,7 +282,7 @@ export class JsonToXmlConverter {
     imageFilename: string
   ): AnnotationData {
     const properties = tableData.properties || {};
-    
+
     // Handle None values properly (0 is a valid coordinate/dimension)
     let tableX = tableData.x ?? 0;
     let tableY = tableData.y ?? 0;
@@ -288,8 +299,6 @@ export class JsonToXmlConverter {
     // Calculate crop area
     const cropX = tableX - padding;
     const cropY = tableY - padding;
-    const cropWidth = tableWidth + (2 * padding);
-    const cropHeight = tableHeight + (2 * padding);
 
     // Table coordinates relative to cropped image
     const tableXInCrop = padding;
@@ -308,7 +317,6 @@ export class JsonToXmlConverter {
     // Get cell coordinates and data
     const cellCoords = this.calculateCellCoordinates(properties, tableX, tableY);
     const cellData = properties.cellData || {};
-    const mergedCells = properties.mergedCells || {};
 
     // Create cells
     const cells: CellData[] = [];
@@ -368,9 +376,9 @@ export class JsonToXmlConverter {
   }
 
   /**
-   * Convert AnnotationData to XML string
+   * Convert a single table's AnnotationData to XML string (table element only)
    */
-  private annotationDataToXml(annotationData: AnnotationData): string {
+  private annotationDataToTableXml(annotationData: AnnotationData): string {
     const cellsXml = annotationData.cells
       .map(
         cell => `        <cell start-row="${cell.startRow}" end-row="${cell.endRow}" start-col="${cell.startCol}" end-col="${cell.endCol}">
@@ -384,11 +392,29 @@ export class JsonToXmlConverter {
       ? `        <Coords points="${annotationData.tableCoords.points.map(p => `${p.x},${p.y}`).join(' ')}" />\n`
       : '';
 
-    return `<?xml version='1.0' encoding='utf-8'?>
-<document filename="${annotationData.filename}">
-    <table>
+    return `    <table>
 ${tableCoordsXml}${cellsXml}
-    </table>
+    </table>`;
+  }
+
+  /**
+   * Convert multiple AnnotationData objects to a single XML string with multiple tables
+   */
+  private annotationDataArrayToXml(annotationDataArray: AnnotationData[]): string {
+    if (annotationDataArray.length === 0) {
+      throw new Error('Cannot convert empty annotation data array to XML');
+    }
+
+    // Use the filename from the first annotation (they should all be the same)
+    const filename = annotationDataArray[0].filename;
+
+    const tablesXml = annotationDataArray
+      .map(data => this.annotationDataToTableXml(data))
+      .join('\n');
+
+    return `<?xml version='1.0' encoding='utf-8'?>
+<document filename="${filename}">
+${tablesXml}
 </document>`;
   }
 
@@ -398,7 +424,6 @@ ${tableCoordsXml}${cellsXml}
   private getImageFilenameForTable(
     baseName: string,
     imageExtensions: Set<string>,
-    jsonFile: File,
     allFiles: File[]
   ): string | null {
     // Try exact match with different extensions
@@ -463,40 +488,45 @@ ${tableCoordsXml}${cellsXml}
         }
 
         const baseName = jsonFile.name.substring(0, jsonFile.name.lastIndexOf('.')) || jsonFile.name;
-        
+
         // Find corresponding image file
         const imageFilename = this.getImageFilenameForTable(
           baseName,
           imageExtensions,
-          jsonFile,
           allFiles
         ) || `${baseName}.png`; // Default fallback
 
-        // Process each table
+        // Convert all tables to annotation data
+        const annotationDataArray: AnnotationData[] = [];
         for (let tableIndex = 0; tableIndex < tables.length; tableIndex++) {
           try {
             const tableData = tables[tableIndex];
-            const tableId = tableData.id || `table_${tableIndex}`;
 
             // Convert table to annotation data
             const annotationData = this.convertTableToAnnotationData(tableData, imageFilename);
+            annotationDataArray.push(annotationData);
+            tablesProcessed++;
+          } catch (error) {
+            errors.push(`Error processing table ${tableIndex + 1} in ${jsonFile.name}: ${error}`);
+          }
+        }
 
-            // Convert to XML string
-            const xmlString = this.annotationDataToXml(annotationData);
+        // Create a single XML file with all tables
+        if (annotationDataArray.length > 0) {
+          try {
+            // Convert all annotation data to a single XML string
+            const xmlString = this.annotationDataArrayToXml(annotationDataArray);
 
-            // Generate XML filename
-            const xmlFilename = tables.length > 1
-              ? `${baseName}_table_${tableIndex}_${tableId.replace(/[\/\\]/g, '_')}.xml`
-              : `${baseName}.xml`;
+            // Generate XML filename (always use base name, regardless of table count)
+            const xmlFilename = `${baseName}.xml`;
 
             // Create XML file
             const xmlBlob = new Blob([xmlString], { type: 'text/xml' });
             const xmlFile = new File([xmlBlob], xmlFilename, { type: 'text/xml' });
 
             xmlFiles.push(xmlFile);
-            tablesProcessed++;
           } catch (error) {
-            errors.push(`Error processing table ${tableIndex + 1} in ${jsonFile.name}: ${error}`);
+            errors.push(`Error creating XML file for ${jsonFile.name}: ${error}`);
           }
         }
       } catch (error) {
@@ -507,7 +537,7 @@ ${tableCoordsXml}${cellsXml}
     const success = xmlFiles.length > 0;
     const message = success
       ? `Successfully converted ${tablesProcessed} table(s) from ${jsonFiles.length} JSON file(s) to ${xmlFiles.length} XML file(s)`
-      : `Failed to convert JSON files. ${errors.join('; ')}`;
+      : `Failed to convert JSON files. ${errors.length > 0 ? errors.join('; ') : 'No tables found'}`;
 
     return {
       success,

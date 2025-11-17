@@ -311,48 +311,116 @@ function App() {
     });
   }, [loadAnnotation]);
 
-  const performPairSwitch = useCallback((pairId: string) => {
+  const performPairSwitch = useCallback(async (pairId: string) => {
     setSelectedPairId(pairId);
     const pair = pairs.find(p => p.id === pairId);
     if (pair) {
       isLoadingPairRef.current = true;
-      setCurrentImageUrl(pair.imageUrl || null);
       setImageZoom(1); // Reset zoom when selecting a different image
       setImageScale(1); // Reset scale when selecting a different image
       setScaledImageUrl(null); // Reset scaled image when selecting a different image
-      if (pair.xmlFile) {
-        const reader = new FileReader();
-        reader.onload = e => {
-          const xmlString = e.target?.result as string;
-          try {
-            const annotationData = parseXml(xmlString);
-            loadAnnotation(annotationData);
-            // Set saved state to the exported XML from the loaded annotation
-            // This ensures we compare apples to apples
-            const exportedXml = exportToXml(annotationData);
-            lastSavedAnnotationRef.current = exportedXml;
-            setHasUnsavedChanges(false);
-            isLoadingPairRef.current = false;
-          } catch (error) {
-            console.error('Failed to parse XML:', error);
-            lastSavedAnnotationRef.current = null;
-            setHasUnsavedChanges(true);
-            isLoadingPairRef.current = false;
+      
+      try {
+        // Fetch fresh image from server with cache-busting
+        const imageFilename = pair.imageFile.name;
+        const imageFile = await downloadFile(imageFilename, true);
+        const freshImageUrl = URL.createObjectURL(imageFile);
+        setCurrentImageUrl(freshImageUrl);
+        
+        // Revoke old URL if it exists
+        if (pair.imageUrl && pair.imageUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(pair.imageUrl);
+        }
+        
+        // Update the pair with the fresh image URL
+        setPairs(prev => prev.map(p => {
+          if (p.id === pairId) {
+            return { ...p, imageUrl: freshImageUrl, imageFile };
           }
-        };
-        reader.readAsText(pair.xmlFile);
-      } else {
-        const filename = pair.imageFile.name 
-          ? pair.imageFile.name.replace(/\.(png|jpg|jpeg)$/i, '.png')
-          : 'annotation.png';
-        loadAnnotation({
-          filename,
-          tableCoords: { points: [] },
-          cells: [],
-        });
-        lastSavedAnnotationRef.current = null;
-        setHasUnsavedChanges(true);
-        isLoadingPairRef.current = false;
+          return p;
+        }));
+        
+        // Load XML from server if available
+        if (pair.xmlFile) {
+          const xmlFilename = pair.xmlFile.name;
+          const xmlFile = await downloadFile(xmlFilename, true);
+          const reader = new FileReader();
+          reader.onload = e => {
+            const xmlString = e.target?.result as string;
+            try {
+              const annotationData = parseXml(xmlString);
+              loadAnnotation(annotationData);
+              // Set saved state to the exported XML from the loaded annotation
+              // This ensures we compare apples to apples
+              const exportedXml = exportToXml(annotationData);
+              lastSavedAnnotationRef.current = exportedXml;
+              setHasUnsavedChanges(false);
+              isLoadingPairRef.current = false;
+              
+              // Update the pair with the fresh XML file
+              setPairs(prev => prev.map(p => {
+                if (p.id === pairId) {
+                  return { ...p, xmlFile };
+                }
+                return p;
+              }));
+            } catch (error) {
+              console.error('Failed to parse XML:', error);
+              lastSavedAnnotationRef.current = null;
+              setHasUnsavedChanges(true);
+              isLoadingPairRef.current = false;
+            }
+          };
+          reader.readAsText(xmlFile);
+        } else {
+          const filename = pair.imageFile.name 
+            ? pair.imageFile.name.replace(/\.(png|jpg|jpeg)$/i, '.png')
+            : 'annotation.png';
+          loadAnnotation({
+            filename,
+            tableCoords: { points: [] },
+            cells: [],
+          });
+          lastSavedAnnotationRef.current = null;
+          setHasUnsavedChanges(true);
+          isLoadingPairRef.current = false;
+        }
+      } catch (error) {
+        console.error('Failed to load files from server:', error);
+        // Fallback to cached files if server fetch fails
+        setCurrentImageUrl(pair.imageUrl || null);
+        if (pair.xmlFile) {
+          const reader = new FileReader();
+          reader.onload = e => {
+            const xmlString = e.target?.result as string;
+            try {
+              const annotationData = parseXml(xmlString);
+              loadAnnotation(annotationData);
+              const exportedXml = exportToXml(annotationData);
+              lastSavedAnnotationRef.current = exportedXml;
+              setHasUnsavedChanges(false);
+              isLoadingPairRef.current = false;
+            } catch (error) {
+              console.error('Failed to parse XML:', error);
+              lastSavedAnnotationRef.current = null;
+              setHasUnsavedChanges(true);
+              isLoadingPairRef.current = false;
+            }
+          };
+          reader.readAsText(pair.xmlFile);
+        } else {
+          const filename = pair.imageFile.name 
+            ? pair.imageFile.name.replace(/\.(png|jpg|jpeg)$/i, '.png')
+            : 'annotation.png';
+          loadAnnotation({
+            filename,
+            tableCoords: { points: [] },
+            cells: [],
+          });
+          lastSavedAnnotationRef.current = null;
+          setHasUnsavedChanges(true);
+          isLoadingPairRef.current = false;
+        }
       }
     }
     setPendingPairSwitch(null);
@@ -391,8 +459,36 @@ function App() {
       const blob = new Blob([xmlString], { type: 'text/xml' });
       const xmlFile = new File([blob], xmlFilename, { type: 'text/xml' });
       
-      // Save to server only
-      await uploadFiles([xmlFile]);
+      const imageFilename = annotation.filename.replace(/\.(jpg|jpeg)$/i, '.png');
+      const filesToUpload: File[] = [xmlFile];
+      
+      // Get the image to save (create scaled version if needed)
+      if (currentImageUrl) {
+        try {
+          let imageToSave: string;
+          
+          // If scale is not 1, ensure we have a scaled image
+          if (imageScale !== 1) {
+            // Use existing scaled image or create one
+            imageToSave = scaledImageUrl || await createScaledImage(currentImageUrl, imageScale);
+          } else {
+            // Use original image
+            imageToSave = currentImageUrl;
+          }
+          
+          // Fetch the image and convert to File
+          const response = await fetch(imageToSave);
+          const imageBlob = await response.blob();
+          const imageFile = new File([imageBlob], imageFilename, { type: 'image/png' });
+          filesToUpload.push(imageFile);
+        } catch (imageError) {
+          console.error('Failed to convert image to file:', imageError);
+          // Continue with XML upload even if image conversion fails
+        }
+      }
+      
+      // Save to server
+      await uploadFiles(filesToUpload);
       
       // Mark as saved
       lastSavedAnnotationRef.current = xmlString;
@@ -409,7 +505,7 @@ function App() {
       console.error('Failed to save XML to server:', error);
       // Don't mark as saved if upload fails
     }
-  }, [annotation, selectedPairId]);
+  }, [annotation, selectedPairId, scaledImageUrl, currentImageUrl, imageScale, createScaledImage]);
 
   const handleUnsavedDialogSave = useCallback(() => {
     if (pendingPairSwitch) {
