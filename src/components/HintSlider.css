@@ -1,0 +1,128 @@
+.hint-slider-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.95));
+  border-top: 1px solid #e5e7eb;
+  padding: 12px 16px;
+  z-index: 100;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.hint-slider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.hint-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  height: 32px;
+}
+
+.hint-slides {
+  display: flex;
+  transition: transform 0.3s ease-in-out;
+  height: 100%;
+}
+
+.hint-slide {
+  min-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #4b5563;
+  text-align: center;
+  padding: 0 8px;
+  white-space: nowrap;
+  height: 100%;
+}
+
+.hint-nav-button {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 20px;
+  color: #6b7280;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.hint-nav-button:hover:not(:disabled) {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #9ca3af;
+}
+
+.hint-nav-button:active:not(:disabled) {
+  background: #d1d5db;
+}
+
+.hint-nav-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hint-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: none;
+  background: #d1d5db;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.hint-indicator:hover {
+  background: #9ca3af;
+  transform: scale(1.2);
+}
+
+.hint-indicator.active {
+  background: #2563eb;
+  width: 24px;
+  border-radius: 3px;
+}
+
+@media (max-width: 768px) {
+  .hint-slider-container {
+    padding: 10px 12px;
+  }
+
+  .hint-slide {
+    font-size: 13px;
+  }
+
+  .hint-nav-button {
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+  }
+
+  .hint-content {
+    height: 28px;
+  }
+}
+

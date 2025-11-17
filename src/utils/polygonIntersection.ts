@@ -245,3 +245,53 @@ function getBounds(points: Point[]): { minX: number; minY: number; maxX: number;
   };
 }
 
+/**
+ * Finds all cells that overlap with a given cell (including transitive overlaps)
+ * This builds a transitive closure: if A overlaps B and B overlaps C, then A, B, C are all in the same group
+ * @param cellId The ID of the cell to find overlaps for
+ * @param cells Array of all cells to check against
+ * @returns Set of cell IDs that overlap with the given cell (including the cell itself)
+ */
+export function findOverlappingCellGroup(
+  cellId: string,
+  cells: Array<{ id: string; points: Point[] }>
+): Set<string> {
+  const targetCell = cells.find(c => c.id === cellId);
+  if (!targetCell) {
+    return new Set();
+  }
+
+  const overlappingGroup = new Set<string>([cellId]); // Include the cell itself
+  const toCheck = new Set<string>([cellId]); // Cells we need to check for overlaps
+  
+  // Build transitive closure: keep adding cells that overlap with any cell in the group
+  while (toCheck.size > 0) {
+    const currentCellId = Array.from(toCheck)[0];
+    toCheck.delete(currentCellId);
+    
+    const currentCell = cells.find(c => c.id === currentCellId);
+    if (!currentCell) continue;
+
+    // Check all other cells for overlap with current cell
+    for (const cell of cells) {
+      if (cell.id === currentCellId || overlappingGroup.has(cell.id)) {
+        continue; // Skip self and already added cells
+      }
+
+      // Quick bounding box check first
+      if (!boundingBoxesOverlap(currentCell.points, cell.points)) {
+        continue;
+      }
+
+      // Calculate actual polygon intersection
+      const intersection = polygonIntersection(currentCell.points, cell.points);
+      if (intersection && intersection.length >= 3) {
+        overlappingGroup.add(cell.id);
+        toCheck.add(cell.id); // Also check this new cell for overlaps
+      }
+    }
+  }
+
+  return overlappingGroup;
+}
+

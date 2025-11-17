@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import { EdgeControls } from './components/EdgeControls';
 import { FileUpload } from './components/FileUpload';
+import { HintSlider } from './components/HintSlider';
 import { ImageCanvas } from './components/ImageCanvas';
 import { MoveSpeedSettings, useMoveSpeedSettings } from './components/MoveSpeedSettings';
 import { ShortcutEditor } from './components/ShortcutEditor';
@@ -16,6 +17,8 @@ import { exportToJson } from './utils/jsonExporter';
 import { calculateSnap } from './utils/snapping';
 import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
+import { findOverlappingCellGroup } from './utils/polygonIntersection';
+import { listFiles, downloadFile } from './utils/fileApi';
 
 function App() {
   const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
@@ -32,6 +35,14 @@ function App() {
   const [detectWrongBorders, setDetectWrongBorders] = useState(false);
   const [horizontalPadding, setHorizontalPadding] = useState(2);
   const [verticalPadding, setVerticalPadding] = useState(3);
+  
+  // Track overlapping group for Tab cycling
+  // sourceCellId is the cell that was manually selected (not via Tab)
+  // cellIds is the sorted list of all cells in the overlapping group
+  const overlappingGroupRef = useRef<{ sourceCellId: string; cellIds: string[] } | null>(null);
+  
+  // Track if last selection change was via Tab (to avoid clearing cache on Tab)
+  const lastSelectionViaTabRef = useRef(false);
 
   const handleFilesSelected = useCallback((files: File[]) => {
     const newPairs = pairImageXmlFiles(files);
@@ -221,6 +232,7 @@ function App() {
     };
 
     createCell(newCell);
+    overlappingGroupRef.current = null; // Clear cache when creating new cell
     setSelectedCellIds(new Set([newCell.id]));
     setIsCreatingCell(false);
     setMode('resize'); // Switch to resize mode after creating a cell
@@ -247,6 +259,31 @@ function App() {
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  // Validate selection when annotation changes (e.g., after undo/redo)
+  useEffect(() => {
+    if (!annotation) {
+      // Clear selection if annotation is removed
+      if (selectedCellIds.size > 0) {
+        setSelectedCellIds(new Set());
+        overlappingGroupRef.current = null;
+      }
+      return;
+    }
+
+    // Filter out any selected cell IDs that no longer exist
+    const validCellIds = Array.from(selectedCellIds).filter(id => 
+      annotation.getCellById(id) !== null
+    );
+
+    if (validCellIds.length !== selectedCellIds.size) {
+      // Some selected cells no longer exist, update selection
+      setSelectedCellIds(new Set(validCellIds));
+      if (validCellIds.length === 0) {
+        overlappingGroupRef.current = null;
+      }
+    }
+  }, [annotation, selectedCellIds]);
 
   useEffect(() => {
     annotationRef.current = annotation;
@@ -299,7 +336,7 @@ function App() {
     stepInterval: moveSpeedSettings.stepInterval,
   });
 
-  // Load default files on mount (only once)
+  // Load files from backend on mount (only once)
   const defaultFilesLoadedRef = useRef(false);
   useEffect(() => {
     if (defaultFilesLoadedRef.current) return;
@@ -307,37 +344,75 @@ function App() {
     
     defaultFilesLoadedRef.current = true;
     
-    const loadDefaultFiles = async () => {
-      const imageFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.png';
-      const xmlFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.xml';
-
+    const loadFilesFromBackend = async () => {
       try {
-        // Fetch both files
-        const [imageResponse, xmlResponse] = await Promise.all([
-          fetch(`/${imageFileName}`),
-          fetch(`/${xmlFileName}`),
-        ]);
+        // Get list of files from backend
+        const fileInfos = await listFiles();
+        
+        if (fileInfos.length === 0) {
+          // Fallback to default files in public folder if backend has no files
+          const imageFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.png';
+          const xmlFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.xml';
 
-        if (!imageResponse.ok || !xmlResponse.ok) {
-          console.warn('Default files not found, skipping auto-load');
+          try {
+            const [imageResponse, xmlResponse] = await Promise.all([
+              fetch(`/${imageFileName}`),
+              fetch(`/${xmlFileName}`),
+            ]);
+
+            if (imageResponse.ok && xmlResponse.ok) {
+              const imageBlob = await imageResponse.blob();
+              const xmlBlob = await xmlResponse.blob();
+              const imageFile = new File([imageBlob], imageFileName, { type: imageBlob.type });
+              const xmlFile = new File([xmlBlob], xmlFileName, { type: 'text/xml' });
+              handleFilesSelected([imageFile, xmlFile]);
+            }
+          } catch (error) {
+            console.warn('Failed to load default files:', error);
+          }
           return;
         }
 
-        // Convert to File object
-        const imageBlob = await imageResponse.blob();
-        const xmlBlob = await xmlResponse.blob();
+        // Download all files from backend and convert to File objects
+        const files: File[] = [];
+        for (const fileInfo of fileInfos) {
+          try {
+            const file = await downloadFile(fileInfo.name);
+            files.push(file);
+          } catch (error) {
+            console.error(`Failed to download file ${fileInfo.name}:`, error);
+          }
+        }
 
-        const imageFile = new File([imageBlob], imageFileName, { type: imageBlob.type });
-        const xmlFile = new File([xmlBlob], xmlFileName, { type: 'text/xml' });
-
-        // Load the files using the existing handler
-        handleFilesSelected([imageFile, xmlFile]);
+        if (files.length > 0) {
+          handleFilesSelected(files);
+        }
       } catch (error) {
-        console.error('Failed to load default files:', error);
+        console.error('Failed to load files from backend:', error);
+        // Fallback to default files if backend is unavailable
+        const imageFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.png';
+        const xmlFileName = 'page_32_goc_3706_ec022de2-25a3-4386-ac1f-f3751db43bb5_patch_1.xml';
+
+        try {
+          const [imageResponse, xmlResponse] = await Promise.all([
+            fetch(`/${imageFileName}`),
+            fetch(`/${xmlFileName}`),
+          ]);
+
+          if (imageResponse.ok && xmlResponse.ok) {
+            const imageBlob = await imageResponse.blob();
+            const xmlBlob = await xmlResponse.blob();
+            const imageFile = new File([imageBlob], imageFileName, { type: imageBlob.type });
+            const xmlFile = new File([xmlBlob], xmlFileName, { type: 'text/xml' });
+            handleFilesSelected([imageFile, xmlFile]);
+          }
+        } catch (fallbackError) {
+          console.warn('Failed to load default files:', fallbackError);
+        }
       }
     };
 
-    loadDefaultFiles();
+    loadFilesFromBackend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
@@ -352,6 +427,62 @@ function App() {
 
       const pressedKey = parseKeyEvent(e);
       const normalizedPressed = normalizeShortcut(pressedKey);
+      
+      // Handle Tab key to cycle through overlapping cells
+      if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (annotation && selectedCellIds.size === 1) {
+          e.preventDefault();
+          const selectedCellId = Array.from(selectedCellIds)[0];
+          const allCells = annotation.cells.map(cell => ({ id: cell.id, points: cell.points }));
+          
+          const cachedGroup = overlappingGroupRef.current;
+          let overlappingArray: string[];
+          
+          // Recalculate if no cache, or if current selection is not in cached group
+          if (!cachedGroup || !cachedGroup.cellIds.includes(selectedCellId)) {
+            // Recalculate overlapping group from the selected cell
+            const overlappingGroup = findOverlappingCellGroup(selectedCellId, allCells);
+            
+            if (overlappingGroup.size > 1) {
+              overlappingArray = Array.from(overlappingGroup).sort();
+              // Cache the group - use the first cell in sorted order as source
+              overlappingGroupRef.current = {
+                sourceCellId: overlappingArray[0],
+                cellIds: overlappingArray,
+              };
+            } else {
+              // No overlapping cells, clear cache
+              overlappingGroupRef.current = null;
+              return;
+            }
+          } else {
+            // Use cached group - continue cycling through the same group
+            overlappingArray = cachedGroup.cellIds;
+          }
+          
+          // Find current index in the overlapping array
+          const currentIndex = overlappingArray.indexOf(selectedCellId);
+          
+          if (currentIndex === -1) {
+            // Shouldn't happen if cache is valid, but handle it
+            return;
+          }
+          
+          // Calculate next index with wrap-around
+          const nextIndex = e.shiftKey 
+            ? (currentIndex - 1 + overlappingArray.length) % overlappingArray.length // Shift+Tab cycles backward
+            : (currentIndex + 1) % overlappingArray.length; // Tab cycles forward
+          
+          const nextCellId = overlappingArray[nextIndex];
+          
+          // Mark that this selection change is via Tab
+          lastSelectionViaTabRef.current = true;
+          
+          // Update selection
+          setSelectedCellIds(new Set([nextCellId]));
+        }
+        return;
+      }
       
       // Handle undo/redo with standard shortcuts
       if (e.ctrlKey || e.metaKey) {
@@ -396,7 +527,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo]);
+  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds]);
 
   return (
     <div className="app">
@@ -486,6 +617,7 @@ function App() {
                     selectedCellIds.forEach(cellId => {
                       removeCell(cellId);
                     });
+                    overlappingGroupRef.current = null; // Clear cache when removing cells
                     setSelectedCellIds(new Set());
                   }
                 }}
@@ -528,7 +660,15 @@ function App() {
             imageUrl={currentImageUrl}
             annotation={annotation}
             selectedCellIds={selectedCellIds}
-            onCellSelect={(cellIds) => setSelectedCellIds(cellIds)}
+            onCellSelect={(cellIds) => {
+              // If selection change was not via Tab, clear the overlapping group cache
+              // This allows a new overlapping group to be calculated when Tab is pressed
+              if (!lastSelectionViaTabRef.current) {
+                overlappingGroupRef.current = null;
+              }
+              lastSelectionViaTabRef.current = false;
+              setSelectedCellIds(cellIds);
+            }}
             onCellMove={moveCell}
             onCellMoveEnd={(cellId, shouldSnap, snapDeltaX, snapDeltaY) => {
               if (shouldSnap) {
@@ -620,6 +760,7 @@ function App() {
           </div>
         </div>
       </div>
+      <HintSlider />
     </div>
   );
 }
