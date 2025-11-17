@@ -1287,6 +1287,19 @@ body {
   border-color: #2563eb;
 }
 
+.edge-group button.mixed {
+  background: #fbbf24;
+  color: #78350f;
+  border-color: #fbbf24;
+}
+
+.multi-select-indicator {
+  font-size: 12px;
+  color: #666;
+  font-weight: normal;
+  margin-left: 4px;
+}
+
 .move-speed-settings {
   margin-bottom: 24px;
   padding-bottom: 16px;

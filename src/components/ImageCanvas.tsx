@@ -162,6 +162,19 @@ export function ImageCanvas({
     scale,
     imageOffset: displayOffset,
     getContainerRect: () => containerRef.current?.getBoundingClientRect() || null,
+    snapEnabled,
+    snapThreshold,
+    onSnapPreview: (preview) => {
+      if (preview) {
+        setSnapPreview({ show: preview.show, points: preview.points });
+        setSnappedCellId(preview.matchedCellId);
+        setSnappedCellIds(new Set(preview.matchedCellIds));
+      } else {
+        setSnapPreview(null);
+        setSnappedCellId(null);
+        setSnappedCellIds(new Set());
+      }
+    },
   });
 
   const { handleMouseDown: handleCreateMouseDown, handleMouseMove: handleCreateMove, handleMouseUp: handleCreateUp, getPreviewRect, isCreating } = useCellCreate({
@@ -831,11 +844,20 @@ export function ImageCanvas({
                 const SELECTED_STROKE_COLOR = '#ff6b00'; // Bright orange
                 const SELECTED_STROKE_WIDTH = 5;
                 const SELECTED_GLOW_COLOR = '#ff6b00';
-                const CORNER_HANDLE_SIZE = 8;
+                // Base handle sizes in display pixels - will be scaled inversely with zoom
+                const BASE_CORNER_HANDLE_SIZE = 8;
+                const BASE_CORNER_HANDLE_STROKE_WIDTH = 2;
                 const CORNER_HANDLE_COLOR = '#2563eb';
                 const CORNER_HANDLE_FILL = '#ffffff';
-                const CORNER_DOT_SIZE = 3;
+                const BASE_CORNER_DOT_SIZE = 3;
                 const CORNER_DOT_COLOR = '#2563eb';
+                // Scale handle sizes inversely with zoom to maintain consistent visual size
+                // Add bounds to prevent handles from becoming too small or too large
+                const MIN_HANDLE_SIZE = 2; // Minimum size in SVG coordinates
+                const MAX_HANDLE_SIZE = 20; // Maximum size in SVG coordinates
+                const CORNER_HANDLE_SIZE = Math.max(MIN_HANDLE_SIZE, Math.min(MAX_HANDLE_SIZE, BASE_CORNER_HANDLE_SIZE / scale));
+                const CORNER_HANDLE_STROKE_WIDTH = Math.max(0.5, Math.min(5, BASE_CORNER_HANDLE_STROKE_WIDTH / scale));
+                const CORNER_DOT_SIZE = Math.max(1, Math.min(10, BASE_CORNER_DOT_SIZE / scale));
 
                 return (
                   <g
@@ -925,7 +947,7 @@ export function ImageCanvas({
                         r={CORNER_HANDLE_SIZE}
                         fill={CORNER_HANDLE_FILL}
                         stroke={CORNER_HANDLE_COLOR}
-                        strokeWidth={2}
+                        strokeWidth={CORNER_HANDLE_STROKE_WIDTH}
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           handleCornerMouseDown(e, cell.id, index, cell.points);

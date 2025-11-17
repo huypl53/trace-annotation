@@ -37,6 +37,14 @@ export interface CornerSnapResult {
   snappedY: number;
 }
 
+export interface ResizeEdgeSnapResult {
+  snapped: boolean;
+  snappedX: number;
+  snappedY: number;
+  matchedCellId: string | null;
+  matchedCellIds: string[];
+}
+
 export function calculateSnap(
   draggedCell: Cell,
   otherCells: Cell[],
@@ -232,6 +240,230 @@ export function calculateCornerSnap(
     snapped,
     snappedX: bestSnapX,
     snappedY: bestSnapY,
+  };
+}
+
+/**
+ * Calculates edge-to-edge snapping for resize operations
+ * When resizing a cell by dragging a corner, checks if the edges align with other cell edges
+ * @param resizedCell The cell being resized (with new points after corner movement)
+ * @param draggedCornerIndex The index of the corner being dragged (0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left)
+ * @param draggedCorner The current position of the corner being dragged
+ * @param initialCorner The initial position of the corner before dragging
+ * @param draggedCellId The ID of the cell being resized
+ * @param otherCells Other cells to snap to
+ * @param snapThreshold The snap threshold in original image coordinates
+ */
+export function calculateResizeEdgeSnap(
+  resizedCell: Cell,
+  draggedCornerIndex: number,
+  draggedCorner: Point,
+  initialCorner: Point,
+  draggedCellId: string,
+  otherCells: Cell[],
+  snapThreshold: number = DEFAULT_SNAP_THRESHOLD
+): ResizeEdgeSnapResult {
+  if (otherCells.length === 0) {
+    return {
+      snapped: false,
+      snappedX: draggedCorner.x,
+      snappedY: draggedCorner.y,
+      matchedCellId: null,
+      matchedCellIds: [],
+    };
+  }
+
+  const resizedBounds = resizedCell.getBounds();
+  const resizedLeft = resizedBounds.minX;
+  const resizedRight = resizedBounds.maxX;
+  const resizedTop = resizedBounds.minY;
+  const resizedBottom = resizedBounds.maxY;
+
+  // Determine which edges are affected by the dragged corner
+  // 0=top-left (affects left and top), 1=top-right (affects right and top)
+  // 2=bottom-right (affects right and bottom), 3=bottom-left (affects left and bottom)
+  const affectsLeft = draggedCornerIndex === 0 || draggedCornerIndex === 3;
+  const affectsRight = draggedCornerIndex === 1 || draggedCornerIndex === 2;
+  const affectsTop = draggedCornerIndex === 0 || draggedCornerIndex === 1;
+  const affectsBottom = draggedCornerIndex === 2 || draggedCornerIndex === 3;
+
+  // Calculate the delta from initial corner position
+  const deltaX = draggedCorner.x - initialCorner.x;
+  const deltaY = draggedCorner.y - initialCorner.y;
+
+  const horizontalSnaps: Array<{
+    cellId: string;
+    type: 'left' | 'right';
+    distance: number;
+    snapX: number;
+  }> = [];
+
+  const verticalSnaps: Array<{
+    cellId: string;
+    type: 'top' | 'bottom';
+    distance: number;
+    snapY: number;
+  }> = [];
+
+  for (const otherCell of otherCells) {
+    if (otherCell.id === draggedCellId) continue;
+
+    const otherBounds = otherCell.getBounds();
+    const otherLeft = otherBounds.minX;
+    const otherRight = otherBounds.maxX;
+    const otherTop = otherBounds.minY;
+    const otherBottom = otherBounds.maxY;
+
+    // Check horizontal edge alignment
+    if (affectsLeft) {
+      // Check if resized cell's left edge aligns with other cell's right edge
+      const distLeftRight = Math.abs(resizedLeft - otherRight);
+      if (distLeftRight < snapThreshold) {
+        // To align left edge to otherRight, adjust the corner X
+        // The left edge is directly at the corner's X when dragging top-left or bottom-left
+        horizontalSnaps.push({
+          cellId: otherCell.id,
+          type: 'left',
+          distance: distLeftRight,
+          snapX: otherRight, // Left edge should be at otherRight, so corner X should be otherRight
+        });
+      }
+      // Check if resized cell's left edge aligns with other cell's left edge
+      const distLeftLeft = Math.abs(resizedLeft - otherLeft);
+      if (distLeftLeft < snapThreshold) {
+        horizontalSnaps.push({
+          cellId: otherCell.id,
+          type: 'left',
+          distance: distLeftLeft,
+          snapX: otherLeft, // Left edge should be at otherLeft, so corner X should be otherLeft
+        });
+      }
+    }
+
+    if (affectsRight) {
+      // Check if resized cell's right edge aligns with other cell's left edge
+      const distRightLeft = Math.abs(resizedRight - otherLeft);
+      if (distRightLeft < snapThreshold) {
+        // To align right edge to otherLeft, adjust the corner X
+        // The right edge is directly at the corner's X when dragging top-right or bottom-right
+        horizontalSnaps.push({
+          cellId: otherCell.id,
+          type: 'right',
+          distance: distRightLeft,
+          snapX: otherLeft, // Right edge should be at otherLeft, so corner X should be otherLeft
+        });
+      }
+      // Check if resized cell's right edge aligns with other cell's right edge
+      const distRightRight = Math.abs(resizedRight - otherRight);
+      if (distRightRight < snapThreshold) {
+        horizontalSnaps.push({
+          cellId: otherCell.id,
+          type: 'right',
+          distance: distRightRight,
+          snapX: otherRight, // Right edge should be at otherRight, so corner X should be otherRight
+        });
+      }
+    }
+
+    // Check vertical edge alignment
+    if (affectsTop) {
+      // Check if resized cell's top edge aligns with other cell's bottom edge
+      const distTopBottom = Math.abs(resizedTop - otherBottom);
+      if (distTopBottom < snapThreshold) {
+        // To align top edge to otherBottom, adjust the corner Y
+        // The top edge is directly at the corner's Y when dragging top-left or top-right
+        verticalSnaps.push({
+          cellId: otherCell.id,
+          type: 'top',
+          distance: distTopBottom,
+          snapY: otherBottom, // Top edge should be at otherBottom, so corner Y should be otherBottom
+        });
+      }
+      // Check if resized cell's top edge aligns with other cell's top edge
+      const distTopTop = Math.abs(resizedTop - otherTop);
+      if (distTopTop < snapThreshold) {
+        verticalSnaps.push({
+          cellId: otherCell.id,
+          type: 'top',
+          distance: distTopTop,
+          snapY: otherTop, // Top edge should be at otherTop, so corner Y should be otherTop
+        });
+      }
+    }
+
+    if (affectsBottom) {
+      // Check if resized cell's bottom edge aligns with other cell's top edge
+      const distBottomTop = Math.abs(resizedBottom - otherTop);
+      if (distBottomTop < snapThreshold) {
+        // To align bottom edge to otherTop, adjust the corner Y
+        // The bottom edge is directly at the corner's Y when dragging bottom-left or bottom-right
+        verticalSnaps.push({
+          cellId: otherCell.id,
+          type: 'bottom',
+          distance: distBottomTop,
+          snapY: otherTop, // Bottom edge should be at otherTop, so corner Y should be otherTop
+        });
+      }
+      // Check if resized cell's bottom edge aligns with other cell's bottom edge
+      const distBottomBottom = Math.abs(resizedBottom - otherBottom);
+      if (distBottomBottom < snapThreshold) {
+        verticalSnaps.push({
+          cellId: otherCell.id,
+          type: 'bottom',
+          distance: distBottomBottom,
+          snapY: otherBottom, // Bottom edge should be at otherBottom, so corner Y should be otherBottom
+        });
+      }
+    }
+  }
+
+  // Find the best horizontal and vertical snaps
+  const bestHorizontalSnap = horizontalSnaps.length > 0
+    ? horizontalSnaps.reduce((best, current) => current.distance < best.distance ? current : best)
+    : null;
+
+  const bestVerticalSnap = verticalSnaps.length > 0
+    ? verticalSnaps.reduce((best, current) => current.distance < best.distance ? current : best)
+    : null;
+
+  let snappedX = draggedCorner.x;
+  let snappedY = draggedCorner.y;
+  let snapped = false;
+  let matchedCellId: string | null = null;
+  const matchedCellIds: string[] = [];
+
+  if (bestHorizontalSnap && bestVerticalSnap) {
+    // Both horizontal and vertical snaps available
+    snappedX = bestHorizontalSnap.snapX;
+    snappedY = bestVerticalSnap.snapY;
+    snapped = true;
+    matchedCellIds.push(bestHorizontalSnap.cellId);
+    if (bestVerticalSnap.cellId !== bestHorizontalSnap.cellId) {
+      matchedCellIds.push(bestVerticalSnap.cellId);
+    }
+    matchedCellId = bestHorizontalSnap.distance <= bestVerticalSnap.distance
+      ? bestHorizontalSnap.cellId
+      : bestVerticalSnap.cellId;
+  } else if (bestHorizontalSnap) {
+    // Only horizontal snap available
+    snappedX = bestHorizontalSnap.snapX;
+    snapped = true;
+    matchedCellId = bestHorizontalSnap.cellId;
+    matchedCellIds.push(bestHorizontalSnap.cellId);
+  } else if (bestVerticalSnap) {
+    // Only vertical snap available
+    snappedY = bestVerticalSnap.snapY;
+    snapped = true;
+    matchedCellId = bestVerticalSnap.cellId;
+    matchedCellIds.push(bestVerticalSnap.cellId);
+  }
+
+  return {
+    snapped,
+    snappedX,
+    snappedY,
+    matchedCellId,
+    matchedCellIds,
   };
 }
 

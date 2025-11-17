@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { Cell } from '../models/Cell';
 import { Point } from '../models/types';
-import { calculateCornerSnap } from '../utils/snapping';
+import { calculateCornerSnap, calculateResizeEdgeSnap } from '../utils/snapping';
 
 interface UseCellResizeOptions {
   onResize: (points: Point[]) => void;
@@ -10,9 +10,22 @@ interface UseCellResizeOptions {
   scale: number;
   imageOffset: { x: number; y: number };
   getContainerRect?: () => DOMRect | null;
+  snapEnabled?: boolean;
+  snapThreshold?: number;
+  onSnapPreview?: (preview: { show: boolean; points: Point[]; matchedCellId: string | null; matchedCellIds: string[] } | null) => void;
 }
 
-export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset, getContainerRect }: UseCellResizeOptions) {
+export function useCellResize({ 
+  onResize, 
+  onResizeEnd, 
+  cells, 
+  scale, 
+  imageOffset, 
+  getContainerRect,
+  snapEnabled = true,
+  snapThreshold = 5,
+  onSnapPreview,
+}: UseCellResizeOptions) {
   const resizeState = useRef<{
     cellId: string | null;
     cornerIndex: number | null;
@@ -79,19 +92,117 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
       const newCornerX = newPoints[cornerIndex].x + deltaX;
       const newCornerY = newPoints[cornerIndex].y + deltaY;
 
-      // Apply corner snapping (convert threshold from screen pixels to image coordinates)
-      const snapThreshold = 8 / storedScale;
+      // Convert snap threshold from display pixels to SVG coordinates
+      const snapThresholdInSvg = snapEnabled ? (snapThreshold / storedScale) : Infinity;
       const otherCells = cells.filter(c => c.id !== resizeState.current.cellId);
-      const snapResult = calculateCornerSnap(
-        { x: newCornerX, y: newCornerY },
-        resizeState.current.cellId || '',
-        otherCells,
-        snapThreshold
-      );
+      
+      let finalCornerX = newCornerX;
+      let finalCornerY = newCornerY;
+      let snapMatchedCellId: string | null = null;
+      let snapMatchedCellIds: string[] = [];
 
-      // Use snapped position if snapping occurred, otherwise use the calculated position
-      const finalCornerX = snapResult.snapped ? snapResult.snappedX : newCornerX;
-      const finalCornerY = snapResult.snapped ? snapResult.snappedY : newCornerY;
+      if (snapEnabled && resizeState.current.cellId) {
+        // First, create a temporary cell with the new corner position to check edge snapping
+        const tempPoints = [...newPoints];
+        tempPoints[cornerIndex] = { x: newCornerX, y: newCornerY };
+        
+        // Update adjacent corners to maintain rectangle shape
+        switch (cornerIndex) {
+          case 0: // top-left
+            tempPoints[1] = { ...tempPoints[1], y: tempPoints[1].y + deltaY };
+            tempPoints[3] = { ...tempPoints[3], x: tempPoints[3].x + deltaX };
+            break;
+          case 1: // top-right
+            tempPoints[0] = { ...tempPoints[0], y: tempPoints[0].y + deltaY };
+            tempPoints[2] = { ...tempPoints[2], x: tempPoints[2].x + deltaX };
+            break;
+          case 2: // bottom-right
+            tempPoints[1] = { ...tempPoints[1], x: tempPoints[1].x + deltaX };
+            tempPoints[3] = { ...tempPoints[3], y: tempPoints[3].y + deltaY };
+            break;
+          case 3: // bottom-left
+            tempPoints[0] = { ...tempPoints[0], x: tempPoints[0].x + deltaX };
+            tempPoints[2] = { ...tempPoints[2], y: tempPoints[2].y + deltaY };
+            break;
+        }
+        
+        const tempCell = new Cell({
+          id: resizeState.current.cellId,
+          points: tempPoints,
+          lines: [],
+        });
+
+        // Check edge-to-edge snapping
+        const initialCorner = newPoints[cornerIndex];
+        const edgeSnapResult = calculateResizeEdgeSnap(
+          tempCell,
+          cornerIndex,
+          { x: newCornerX, y: newCornerY },
+          initialCorner,
+          resizeState.current.cellId,
+          otherCells,
+          snapThresholdInSvg
+        );
+
+        // Also check corner-to-corner snapping
+        const cornerSnapResult = calculateCornerSnap(
+          { x: newCornerX, y: newCornerY },
+          resizeState.current.cellId,
+          otherCells,
+          snapThresholdInSvg
+        );
+
+        // Prefer edge snapping over corner snapping (edge snapping is more useful for alignment)
+        if (edgeSnapResult.snapped) {
+          finalCornerX = edgeSnapResult.snappedX;
+          finalCornerY = edgeSnapResult.snappedY;
+          snapMatchedCellId = edgeSnapResult.matchedCellId;
+          snapMatchedCellIds = edgeSnapResult.matchedCellIds;
+        } else if (cornerSnapResult.snapped) {
+          finalCornerX = cornerSnapResult.snappedX;
+          finalCornerY = cornerSnapResult.snappedY;
+        }
+
+        // Update snap preview
+        if (onSnapPreview && (edgeSnapResult.snapped || cornerSnapResult.snapped)) {
+          // Create preview cell with snapped corner
+          const previewPoints = [...tempPoints];
+          previewPoints[cornerIndex] = { x: finalCornerX, y: finalCornerY };
+          
+          // Update adjacent corners for preview
+          const finalDeltaX = finalCornerX - newPoints[cornerIndex].x;
+          const finalDeltaY = finalCornerY - newPoints[cornerIndex].y;
+          switch (cornerIndex) {
+            case 0: // top-left
+              previewPoints[1] = { ...previewPoints[1], y: previewPoints[1].y + finalDeltaY };
+              previewPoints[3] = { ...previewPoints[3], x: previewPoints[3].x + finalDeltaX };
+              break;
+            case 1: // top-right
+              previewPoints[0] = { ...previewPoints[0], y: previewPoints[0].y + finalDeltaY };
+              previewPoints[2] = { ...previewPoints[2], x: previewPoints[2].x + finalDeltaX };
+              break;
+            case 2: // bottom-right
+              previewPoints[1] = { ...previewPoints[1], x: previewPoints[1].x + finalDeltaX };
+              previewPoints[3] = { ...previewPoints[3], y: previewPoints[3].y + finalDeltaY };
+              break;
+            case 3: // bottom-left
+              previewPoints[0] = { ...previewPoints[0], x: previewPoints[0].x + finalDeltaX };
+              previewPoints[2] = { ...previewPoints[2], y: previewPoints[2].y + finalDeltaY };
+              break;
+          }
+          
+          onSnapPreview({
+            show: true,
+            points: previewPoints,
+            matchedCellId: snapMatchedCellId,
+            matchedCellIds: snapMatchedCellIds,
+          });
+        } else if (onSnapPreview) {
+          onSnapPreview(null);
+        }
+      } else if (onSnapPreview) {
+        onSnapPreview(null);
+      }
 
       // Calculate the actual delta after snapping
       const finalDeltaX = finalCornerX - newPoints[cornerIndex].x;
@@ -124,11 +235,14 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
 
       onResize(newPoints);
     },
-    [cells, onResize, getContainerRect]
+    [cells, onResize, getContainerRect, snapEnabled, snapThreshold, onSnapPreview]
   );
 
   const handleMouseUp = useCallback(() => {
     if (resizeState.current.cellId) {
+      if (onSnapPreview) {
+        onSnapPreview(null);
+      }
       onResizeEnd();
       resizeState.current = {
         cellId: null,
@@ -140,7 +254,7 @@ export function useCellResize({ onResize, onResizeEnd, cells, scale, imageOffset
         scale: 1,
       };
     }
-  }, [onResizeEnd]);
+  }, [onResizeEnd, onSnapPreview]);
 
   return {
     handleCornerMouseDown,

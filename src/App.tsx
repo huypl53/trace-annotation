@@ -1269,6 +1269,7 @@ function App() {
             </div>
             <EdgeControls
               cell={selectedCell || null}
+              selectedCells={selectedCells.length > 1 ? selectedCells : []}
               onUpdate={lines => {
                 // Apply to all selected cells
                 selectedCellIds.forEach(cellId => {
