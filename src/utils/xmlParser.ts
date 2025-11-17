@@ -21,51 +21,64 @@ export function parseXml(xmlString: string): AnnotationData {
 
   const filename = documentEl.getAttribute('filename') || '';
 
-  const tableEl = documentEl.querySelector('table');
-  if (!tableEl) {
+  // Get all tables (not just the first one)
+  const tableElements = documentEl.querySelectorAll('table');
+  if (tableElements.length === 0) {
     throw new Error('Invalid XML: missing table element');
   }
 
-  const tableCoordsEl = tableEl.querySelector('Coords');
-  const tableCoords: TableCoords = tableCoordsEl
-    ? { points: parsePoints(tableCoordsEl.getAttribute('points') || '') }
-    : { points: [] };
+  // Combine cells from all tables
+  const allCells: CellData[] = [];
+  let firstTableCoords: TableCoords = { points: [] };
 
-  const cellElements = tableEl.querySelectorAll('cell');
-  const cells: CellData[] = Array.from(cellElements).map((cellEl, index) => {
-    const coordsEl = cellEl.querySelector('Coords');
-    const linesEl = cellEl.querySelector('Lines');
-
-    if (!coordsEl) {
-      throw new Error(`Invalid XML: cell ${index} missing Coords`);
-    }
-    if (!linesEl) {
-      throw new Error(`Invalid XML: cell ${index} missing Lines`);
+  tableElements.forEach((tableEl, tableIndex) => {
+    // Get table coordinates (use first table's coords, or combine if needed)
+    const tableCoordsEl = tableEl.querySelector('Coords');
+    if (tableIndex === 0) {
+      firstTableCoords = tableCoordsEl
+        ? { points: parsePoints(tableCoordsEl.getAttribute('points') || '') }
+        : { points: [] };
     }
 
-    const points = parsePoints(coordsEl.getAttribute('points') || '');
-    const lines = {
-      top: parseInt(linesEl.getAttribute('top') || '0') as 0 | 1,
-      bottom: parseInt(linesEl.getAttribute('bottom') || '0') as 0 | 1,
-      left: parseInt(linesEl.getAttribute('left') || '0') as 0 | 1,
-      right: parseInt(linesEl.getAttribute('right') || '0') as 0 | 1,
-    };
+    // Get all cells from this table
+    const cellElements = tableEl.querySelectorAll('cell');
+    const tableCells: CellData[] = Array.from(cellElements).map((cellEl, cellIndex) => {
+      const coordsEl = cellEl.querySelector('Coords');
+      const linesEl = cellEl.querySelector('Lines');
 
-    return {
-      id: `cell-${index}`,
-      points,
-      lines,
-      startRow: parseInt(cellEl.getAttribute('start-row') || '0'),
-      endRow: parseInt(cellEl.getAttribute('end-row') || '0'),
-      startCol: parseInt(cellEl.getAttribute('start-col') || '0'),
-      endCol: parseInt(cellEl.getAttribute('end-col') || '0'),
-    };
+      if (!coordsEl) {
+        throw new Error(`Invalid XML: cell ${cellIndex} in table ${tableIndex} missing Coords`);
+      }
+      if (!linesEl) {
+        throw new Error(`Invalid XML: cell ${cellIndex} in table ${tableIndex} missing Lines`);
+      }
+
+      const points = parsePoints(coordsEl.getAttribute('points') || '');
+      const lines = {
+        top: parseInt(linesEl.getAttribute('top') || '0') as 0 | 1,
+        bottom: parseInt(linesEl.getAttribute('bottom') || '0') as 0 | 1,
+        left: parseInt(linesEl.getAttribute('left') || '0') as 0 | 1,
+        right: parseInt(linesEl.getAttribute('right') || '0') as 0 | 1,
+      };
+
+      return {
+        id: `cell-${tableIndex}-${cellIndex}`,
+        points,
+        lines,
+        startRow: parseInt(cellEl.getAttribute('start-row') || '0'),
+        endRow: parseInt(cellEl.getAttribute('end-row') || '0'),
+        startCol: parseInt(cellEl.getAttribute('start-col') || '0'),
+        endCol: parseInt(cellEl.getAttribute('end-col') || '0'),
+      };
+    });
+
+    allCells.push(...tableCells);
   });
 
   return {
     filename,
-    tableCoords,
-    cells,
+    tableCoords: firstTableCoords,
+    cells: allCells,
   };
 }
 

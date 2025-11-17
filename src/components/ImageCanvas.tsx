@@ -88,70 +88,14 @@ export function ImageCanvas({
     : (imageSize ? imageOffset.y + panOffset.y : 0);
   const displayOffset = { x: displayOffsetX, y: displayOffsetY };
 
-  // Debug logging for zoom calculations
-  useEffect(() => {
-    console.log('[Zoom Debug] Zoom calculation values:');
-    console.log('  userZoom:', userZoom);
-    console.log('  baseScale:', baseScale);
-    console.log('  imageSize:', imageSize ? { width: imageSize.width, height: imageSize.height } : null);
-    console.log('  originalImageSize:', originalImageSize ? { width: originalImageSize.width, height: originalImageSize.height } : null);
-    console.log('  scale:', scale);
-    console.log('  displayWidth:', displayWidth);
-    console.log('  displayHeight:', displayHeight);
-    console.log('  displayOffsetX:', displayOffsetX);
-    console.log('  displayOffsetY:', displayOffsetY);
-    console.log('  panOffset:', { x: panOffset.x, y: panOffset.y });
-    console.log('  containerSize:', containerRef.current ? {
-      width: containerRef.current.clientWidth,
-      height: containerRef.current.clientHeight,
-    } : null);
-  }, [userZoom, baseScale, imageSize, originalImageSize, scale, displayWidth, displayHeight, displayOffsetX, displayOffsetY, panOffset]);
 
   // Debug logging for render positioning
   useEffect(() => {
     if (imageSize && originalImageSize && svgRef.current) {
       const svgRect = svgRef.current.getBoundingClientRect();
-      const containerRect = containerRef.current?.getBoundingClientRect();
       const imgElement = containerRef.current?.querySelector('img');
       const imgRect = imgElement?.getBoundingClientRect();
       
-      console.log('[Zoom Debug] Render positioning:');
-      console.log('  svgStyle:', {
-        top: svgRef.current.style.top,
-        left: svgRef.current.style.left,
-        width: svgRef.current.style.width,
-        height: svgRef.current.style.height,
-      });
-      const viewBox = svgRef.current.viewBox.baseVal;
-      console.log('  svgViewBox:', { x: viewBox.x, y: viewBox.y, width: viewBox.width, height: viewBox.height });
-      console.log('  svgActualRect:', svgRect ? {
-        top: svgRect.top,
-        left: svgRect.left,
-        width: svgRect.width,
-        height: svgRect.height,
-      } : null);
-      console.log('  imgStyle:', imgElement ? {
-        top: imgElement.style.top,
-        left: imgElement.style.left,
-        width: imgElement.style.width,
-        height: imgElement.style.height,
-      } : null);
-      console.log('  imgActualRect:', imgRect ? {
-        top: imgRect.top,
-        left: imgRect.left,
-        width: imgRect.width,
-        height: imgRect.height,
-      } : null);
-      console.log('  containerRect:', containerRect ? {
-        top: containerRect.top,
-        left: containerRect.left,
-        width: containerRect.width,
-        height: containerRect.height,
-      } : null);
-      console.log('  zoomedDisplayOffsetX:', displayOffset.x);
-      console.log('  zoomedDisplayOffsetY:', displayOffset.y);
-      console.log('  displayWidth:', displayWidth);
-      console.log('  displayHeight:', displayHeight);
       
       // Check for misalignment
       if (svgRect && imgRect) {
@@ -161,24 +105,12 @@ export function ImageCanvas({
           width: svgRect.width - imgRect.width,
           height: svgRect.height - imgRect.height,
         };
-        console.log('  [ALIGNMENT CHECK] SVG vs Image difference:');
-        console.log('    top diff:', svgImgDiff.top, 'left diff:', svgImgDiff.left);
-        console.log('    width diff:', svgImgDiff.width, 'height diff:', svgImgDiff.height);
         if (Math.abs(svgImgDiff.top) > 0.5 || Math.abs(svgImgDiff.left) > 0.5 || 
             Math.abs(svgImgDiff.width) > 0.5 || Math.abs(svgImgDiff.height) > 0.5) {
           console.warn('  [MISMATCH DETECTED] SVG and Image are not aligned!');
         }
       }
       
-      // Check container scroll
-      if (containerRef.current) {
-        console.log('  containerScroll:', {
-          scrollLeft: containerRef.current.scrollLeft,
-          scrollTop: containerRef.current.scrollTop,
-          scrollWidth: containerRef.current.scrollWidth,
-          scrollHeight: containerRef.current.scrollHeight,
-        });
-      }
     }
   }, [displayOffset.x, displayOffset.y, displayWidth, displayHeight, imageSize, originalImageSize]);
 
