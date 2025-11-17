@@ -10,7 +10,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+
+// Parse CLI arguments for port and host
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const config = { port: null, host: null };
+  
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--port' || args[i] === '-p') {
+      config.port = parseInt(args[i + 1], 10);
+      i++;
+    } else if (args[i] === '--host' || args[i] === '-h') {
+      config.host = args[i + 1];
+      i++;
+    }
+  }
+  
+  return config;
+}
+
+const cliArgs = parseArgs();
+const PORT = cliArgs.port || process.env.PORT || 3001;
+const HOST = cliArgs.host || process.env.HOST || 'localhost';
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 // Ensure upload directory exists
@@ -137,8 +158,8 @@ app.delete('/api/files/:filename', async (req, res) => {
 // Start server
 async function startServer() {
   await ensureUploadDir();
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
     console.log(`Upload directory: ${UPLOAD_DIR}`);
   });
 }

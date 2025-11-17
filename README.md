@@ -41,6 +41,82 @@ npm run dev
 npm run dev:server
 ```
 
+### Custom Ports and Hosts
+
+You can customize ports and hosts using CLI arguments or environment variables:
+
+#### Backend Server
+
+**Using CLI arguments:**
+```bash
+# Custom port
+node server/index.js --port 4000
+# or short form
+node server/index.js -p 4000
+
+# Custom host
+node server/index.js --host 0.0.0.0
+# or short form
+node server/index.js -h 0.0.0.0
+
+# Both port and host
+node server/index.js --port 4000 --host 0.0.0.0
+```
+
+**Using environment variables:**
+```bash
+PORT=4000 HOST=0.0.0.0 node server/index.js
+```
+
+#### Frontend Server
+
+**Using CLI arguments (Vite native):**
+```bash
+# Custom frontend port
+npx vite --port 8080
+
+# Custom frontend host
+npx vite --host 0.0.0.0
+
+# Both port and host
+npx vite --port 8080 --host 0.0.0.0
+```
+
+**Using environment variables:**
+```bash
+# Frontend configuration
+VITE_PORT=8080 VITE_HOST=0.0.0.0 npx vite
+
+# Backend proxy configuration (when backend runs on different port/host)
+BACKEND_PORT=4000 BACKEND_HOST=192.168.1.100 npx vite
+
+# All together
+VITE_PORT=8080 VITE_HOST=0.0.0.0 BACKEND_PORT=4000 BACKEND_HOST=localhost npx vite
+```
+
+**Note:** When using custom backend ports/hosts, ensure the frontend proxy configuration matches your backend server settings.
+
+#### Example: Running with Custom Ports
+
+**Terminal 1 - Backend on port 4000:**
+```bash
+node server/index.js --port 4000
+```
+
+**Terminal 2 - Frontend on port 8080, pointing to backend on 4000:**
+```bash
+BACKEND_PORT=4000 npx vite --port 8080
+```
+
+Or using npm scripts with environment variables:
+```bash
+# Backend
+PORT=4000 npm run dev:server
+
+# Frontend
+BACKEND_PORT=4000 VITE_PORT=8080 npm run dev
+```
+
 ## Development
 
 ### Frontend Development
@@ -82,9 +158,30 @@ The backend server provides the following endpoints:
 - `DELETE /api/files/:filename` - Delete a file
 - `GET /files/:filename` - Serve uploaded files
 
-## Environment Variables
+## Configuration Options
+
+### CLI Arguments
+
+#### Backend Server (`server/index.js`)
+- `--port` / `-p` - Server port (default: 3001)
+- `--host` / `-h` - Server host (default: localhost)
+
+#### Frontend Server (`npx vite`)
+- `--port` - Frontend dev server port (default: 5173) - Vite native CLI argument
+- `--host` - Frontend dev server host (default: localhost) - Vite native CLI argument
+- Note: Backend proxy settings must be configured via environment variables (see below)
+- Note: Use `npx vite` to run Vite from local node_modules, or use `npm run dev` which handles this automatically
+
+### Environment Variables
 
 - `PORT` - Backend server port (default: 3001)
+- `HOST` - Backend server host (default: localhost)
+- `VITE_PORT` - Frontend dev server port (default: 5173)
+- `VITE_HOST` - Frontend dev server host (default: localhost)
+- `BACKEND_PORT` - Backend server port for frontend proxy (default: 3001)
+- `BACKEND_HOST` - Backend server host for frontend proxy (default: localhost)
+
+**Priority:** CLI arguments > Environment variables > Defaults
 
 ## Notes
 
