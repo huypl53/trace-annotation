@@ -43,12 +43,10 @@ export interface ConversionResult {
 }
 
 export class JsonToXmlConverter {
-  private paddingRatio: number = 0.02; // 2% padding
   private defaultWidth: number = 100;
   private defaultHeight: number = 30;
 
-  constructor(paddingRatio: number = 0.02) {
-    this.paddingRatio = paddingRatio;
+  constructor() {
   }
 
   /**
@@ -292,25 +290,13 @@ export class JsonToXmlConverter {
     // Adjust table position based on first row and first column border widths
     [tableX, tableY] = this.adjustTablePositionForBorders(properties, tableX, tableY);
 
-    // Calculate padding based on table dimensions
-    const minDimension = Math.min(tableWidth, tableHeight);
-    const padding = minDimension > 0 ? Math.floor(minDimension * this.paddingRatio) : 0;
-
-    // Calculate crop area
-    const cropX = tableX - padding;
-    const cropY = tableY - padding;
-
-    // Table coordinates relative to cropped image
-    const tableXInCrop = padding;
-    const tableYInCrop = padding;
-
-    // Create table coordinates
+    // Create table coordinates using original image coordinates
     const tableCoords: TableCoords = {
       points: [
-        { x: tableXInCrop, y: tableYInCrop },
-        { x: tableXInCrop + tableWidth, y: tableYInCrop },
-        { x: tableXInCrop + tableWidth, y: tableYInCrop + tableHeight },
-        { x: tableXInCrop, y: tableYInCrop + tableHeight },
+        { x: tableX, y: tableY },
+        { x: tableX + tableWidth, y: tableY },
+        { x: tableX + tableWidth, y: tableY + tableHeight },
+        { x: tableX, y: tableY + tableHeight },
       ],
     };
 
@@ -330,17 +316,11 @@ export class JsonToXmlConverter {
       const endRow = row + coords.rowspan - 1;
       const endCol = col + coords.colspan - 1;
 
-      // Convert coordinates to cropped image space
-      const originalX1 = Math.floor(coords.x);
-      const originalY1 = Math.floor(coords.y);
-      const originalX2 = Math.floor(coords.x + coords.width);
-      const originalY2 = Math.floor(coords.y + coords.height);
-
-      // Transform to cropped coordinates
-      const cropX1 = originalX1 - Math.floor(cropX);
-      const cropY1 = originalY1 - Math.floor(cropY);
-      const cropX2 = originalX2 - Math.floor(cropX);
-      const cropY2 = originalY2 - Math.floor(cropY);
+      // Use original image coordinates (no cropping transformation)
+      const x1 = Math.floor(coords.x);
+      const y1 = Math.floor(coords.y);
+      const x2 = Math.floor(coords.x + coords.width);
+      const y2 = Math.floor(coords.y + coords.height);
 
       // Add border information
       const [top, bottom, left, right] = this.determineCellBorders(currentCellData, properties);
@@ -348,10 +328,10 @@ export class JsonToXmlConverter {
       const cell: CellData = {
         id: `cell-${cellIdCounter++}`,
         points: [
-          { x: cropX1, y: cropY1 },
-          { x: cropX2, y: cropY1 },
-          { x: cropX2, y: cropY2 },
-          { x: cropX1, y: cropY2 },
+          { x: x1, y: y1 },
+          { x: x2, y: y1 },
+          { x: x2, y: y2 },
+          { x: x1, y: y2 },
         ],
         lines: {
           top: top as 0 | 1,
@@ -563,7 +543,7 @@ export async function convertJsonFilesToXml(
   jsonFiles: File[],
   allFiles: File[] = []
 ): Promise<ConversionResult> {
-  const converter = new JsonToXmlConverter(0.02); // 2% padding
+  const converter = new JsonToXmlConverter();
   return converter.convertJsonToXml(jsonFiles, allFiles);
 }
 
