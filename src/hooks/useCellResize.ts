@@ -14,7 +14,7 @@ interface UseCellResizeOptions {
   snapThreshold?: number;
   onSnapPreview?: (preview: { show: boolean; points: Point[]; matchedCellId: string | null; matchedCellIds: string[] } | null) => void;
   selectedCellIds?: Set<string>;
-  onMultiCellResize?: (cellId: string, deltaWidth: number, deltaHeight: number, initialCellData: { points: Point[]; bounds: { width: number; height: number } }) => void;
+  onMultiCellResize?: (cellId: string, deltaWidth: number, deltaHeight: number, initialCellData: { points: Point[]; bounds: { width: number; height: number } }, cornerIndex: number) => void;
 }
 
 export function useCellResize({ 
@@ -303,12 +303,12 @@ export function useCellResize({
       }
 
       // If multiple cells are selected, apply same delta width/height to all other cells
-      if (onMultiCellResize && resizeState.current.selectedCellIds.size > 1) {
+      if (onMultiCellResize && resizeState.current.selectedCellIds.size > 1 && resizeState.current.cornerIndex !== null) {
         resizeState.current.selectedCellIds.forEach(cellId => {
           if (cellId !== resizeState.current.cellId) {
             const initialCellData = resizeState.current.initialCells.get(cellId);
             if (initialCellData) {
-              onMultiCellResize(cellId, deltaWidth, deltaHeight, initialCellData);
+              onMultiCellResize(cellId, deltaWidth, deltaHeight, initialCellData, resizeState.current.cornerIndex);
             }
           }
         });

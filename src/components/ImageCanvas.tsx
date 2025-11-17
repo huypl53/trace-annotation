@@ -162,7 +162,7 @@ export function ImageCanvas({
     snapEnabled,
     snapThreshold,
     selectedCellIds,
-    onMultiCellResize: (cellId, deltaWidth, deltaHeight, initialCellData) => {
+    onMultiCellResize: (cellId, deltaWidth, deltaHeight, initialCellData, cornerIndex) => {
       // Resize other selected cells by the same delta width and height
       // Use initial bounds to calculate from the original position
       const initialBounds = {
@@ -179,14 +179,52 @@ export function ImageCanvas({
       // Ensure minimum size
       if (newWidth <= 0 || newHeight <= 0) return;
 
-      // Keep top-left corner fixed and expand by delta width/height
       // Cell points order: 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
-      const newPoints: Point[] = [
-        { x: initialBounds.minX, y: initialBounds.minY }, // top-left: keep fixed
-        { x: initialBounds.minX + newWidth, y: initialBounds.minY }, // top-right: expand width
-        { x: initialBounds.minX + newWidth, y: initialBounds.minY + newHeight }, // bottom-right: expand both
-        { x: initialBounds.minX, y: initialBounds.minY + newHeight }, // bottom-left: expand height
-      ];
+      // Keep the opposite corner fixed based on which corner is being dragged
+      let newPoints: Point[];
+      
+      switch (cornerIndex) {
+        case 0: // top-left: keep bottom-right fixed
+          newPoints = [
+            { x: initialBounds.maxX - newWidth, y: initialBounds.maxY - newHeight }, // top-left: move
+            { x: initialBounds.maxX, y: initialBounds.maxY - newHeight }, // top-right: move
+            { x: initialBounds.maxX, y: initialBounds.maxY }, // bottom-right: keep fixed
+            { x: initialBounds.maxX - newWidth, y: initialBounds.maxY }, // bottom-left: move
+          ];
+          break;
+        case 1: // top-right: keep bottom-left fixed
+          newPoints = [
+            { x: initialBounds.minX, y: initialBounds.maxY - newHeight }, // top-left: move
+            { x: initialBounds.minX + newWidth, y: initialBounds.maxY - newHeight }, // top-right: move
+            { x: initialBounds.minX + newWidth, y: initialBounds.maxY }, // bottom-right: move
+            { x: initialBounds.minX, y: initialBounds.maxY }, // bottom-left: keep fixed
+          ];
+          break;
+        case 2: // bottom-right: keep top-left fixed
+          newPoints = [
+            { x: initialBounds.minX, y: initialBounds.minY }, // top-left: keep fixed
+            { x: initialBounds.minX + newWidth, y: initialBounds.minY }, // top-right: move
+            { x: initialBounds.minX + newWidth, y: initialBounds.minY + newHeight }, // bottom-right: move
+            { x: initialBounds.minX, y: initialBounds.minY + newHeight }, // bottom-left: move
+          ];
+          break;
+        case 3: // bottom-left: keep top-right fixed
+          newPoints = [
+            { x: initialBounds.maxX - newWidth, y: initialBounds.minY }, // top-left: move
+            { x: initialBounds.maxX, y: initialBounds.minY }, // top-right: keep fixed
+            { x: initialBounds.maxX, y: initialBounds.minY + newHeight }, // bottom-right: move
+            { x: initialBounds.maxX - newWidth, y: initialBounds.minY + newHeight }, // bottom-left: move
+          ];
+          break;
+        default:
+          // Fallback to top-left fixed (shouldn't happen)
+          newPoints = [
+            { x: initialBounds.minX, y: initialBounds.minY },
+            { x: initialBounds.minX + newWidth, y: initialBounds.minY },
+            { x: initialBounds.minX + newWidth, y: initialBounds.minY + newHeight },
+            { x: initialBounds.minX, y: initialBounds.minY + newHeight },
+          ];
+      }
 
       onCellResize(cellId, newPoints);
     },
