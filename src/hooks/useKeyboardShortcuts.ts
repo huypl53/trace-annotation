@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export type ShortcutKey = 'move' | 'resize' | 'createCell';
+export type ShortcutKey = 'move' | 'resize' | 'createCell' | 'merge';
 
 export interface Shortcuts {
   move: string;
   resize: string;
   createCell: string;
+  merge: string;
 }
 
 const DEFAULT_SHORTCUTS: Shortcuts = {
   move: 'm',
   resize: 'r',
   createCell: 'c',
+  merge: 'g',
 };
 
 const STORAGE_KEY = 'keyboard-shortcuts';

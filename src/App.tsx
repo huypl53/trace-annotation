@@ -12,7 +12,7 @@ import { Sidebar } from './components/Sidebar';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog';
 import { useAnnotation } from './hooks/useAnnotation';
 import { useArrowKeyMovement } from './hooks/useArrowKeyMovement';
-import { normalizeShortcut, parseKeyEvent, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { normalizeShortcut, parseKeyEvent, useKeyboardShortcuts, formatShortcut } from './hooks/useKeyboardShortcuts';
 import { Cell } from './models/Cell';
 import { ImageXmlPair } from './models/types';
 import { deleteFile, downloadFile, listFiles, uploadFiles } from './utils/fileApi';
@@ -24,7 +24,7 @@ import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 
 function App() {
-  const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
+  const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, mergeCells, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
   const { shortcuts, updateShortcut } = useKeyboardShortcuts();
   const { settings: moveSpeedSettings, updateSettings: updateMoveSpeedSettings } = useMoveSpeedSettings();
   const [pairs, setPairs] = useState<ImageXmlPair[]>([]);
@@ -1051,6 +1051,16 @@ function App() {
             setIsCreatingCell(false);
           }
         }
+      } else if (normalizedPressed === normalizeShortcut(shortcuts.merge)) {
+        if (annotation && selectedCellIds.size >= 2) {
+          e.preventDefault();
+          const cellIdsArray = Array.from(selectedCellIds);
+          const mergedCellId = mergeCells(cellIdsArray);
+          if (mergedCellId) {
+            setSelectedCellIds(new Set([mergedCellId]));
+            overlappingGroupRef.current = null;
+          }
+        }
       }
       
       // Handle S key to toggle snap (only when not in input and not Ctrl+S)
@@ -1115,7 +1125,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings, createCell, removeCell, updateCellLines]);
+  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings, createCell, removeCell, updateCellLines, mergeCells]);
 
   return (
     <div className="app">
@@ -1238,6 +1248,31 @@ function App() {
             </div>
             <div className="toolbar-divider" />
             <div className="toolbar-group">
+              <button
+                onClick={() => {
+                  if (selectedCellIds.size >= 2 && annotation) {
+                    const cellIdsArray = Array.from(selectedCellIds);
+                    const mergedCellId = mergeCells(cellIdsArray);
+                    if (mergedCellId) {
+                      setSelectedCellIds(new Set([mergedCellId]));
+                      overlappingGroupRef.current = null;
+                    }
+                  }
+                }}
+                disabled={!annotation || selectedCellIds.size < 2}
+                className="toolbar-button toolbar-button-primary"
+                title={`Merge selected cells into a single rectangle (${formatShortcut(shortcuts.merge)})`}
+              >
+                <span className="button-icon">🔗</span>
+                <span className="button-text">Merge {selectedCellIds.size >= 2 ? `${selectedCellIds.size}` : ''}</span>
+              </button>
+              <ShortcutEditor
+                label=""
+                shortcutKey="merge"
+                currentShortcut={shortcuts.merge}
+                onUpdate={updateShortcut}
+                disabled={!annotation || selectedCellIds.size < 2}
+              />
               <button
                 onClick={() => {
                   if (selectedCellIds.size > 0) {

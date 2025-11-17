@@ -74,6 +74,71 @@ export function useAnnotation() {
     });
   }, []);
 
+  const mergeCells = useCallback((cellIds: string[]): string | null => {
+    if (cellIds.length < 2) return null;
+
+    let mergedCellId: string | null = null;
+
+    setAnnotation(prev => {
+      if (!prev) return prev;
+      
+      // Get all cells to merge
+      const cellsToMerge = cellIds
+        .map(id => prev.getCellById(id))
+        .filter((cell): cell is Cell => cell !== undefined);
+      
+      if (cellsToMerge.length < 2) return prev;
+
+      // Calculate bounding box of all cells
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      for (const cell of cellsToMerge) {
+        const bounds = cell.getBounds();
+        minX = Math.min(minX, bounds.minX);
+        minY = Math.min(minY, bounds.minY);
+        maxX = Math.max(maxX, bounds.maxX);
+        maxY = Math.max(maxY, bounds.maxY);
+      }
+
+      // Create new merged cell as a rectangle
+      mergedCellId = `cell-${Date.now()}`;
+      const mergedCellData: import('../models/types').CellData = {
+        id: mergedCellId,
+        points: [
+          { x: minX, y: minY }, // top-left
+          { x: maxX, y: minY }, // top-right
+          { x: maxX, y: maxY }, // bottom-right
+          { x: minX, y: maxY }, // bottom-left
+        ],
+        lines: {
+          top: 1,
+          bottom: 1,
+          left: 1,
+          right: 1,
+        },
+        startRow: 0,
+        endRow: 0,
+        startCol: 0,
+        endCol: 0,
+        // Use color and opacity from first cell
+        color: cellsToMerge[0]?.color || '#2563eb',
+        opacity: cellsToMerge[0]?.opacity !== undefined ? cellsToMerge[0].opacity : 0.1,
+      };
+
+      // Remove old cells and add new merged cell
+      const data = prev.toData();
+      data.cells = data.cells.filter(cell => !cellIds.includes(cell.id));
+      data.cells.push(mergedCellData);
+      
+      return new Annotation(data);
+    });
+
+    return mergedCellId;
+  }, []);
+
   const updateAllCellsColor = useCallback((color: string) => {
     setAnnotation(prev => {
       if (!prev) return prev;
@@ -101,6 +166,7 @@ export function useAnnotation() {
     updateCellPoints,
     createCell,
     removeCell,
+    mergeCells,
     updateAllCellsColor,
     updateAllCellsOpacity,
     undo,
