@@ -4,7 +4,7 @@ import { Point } from '../models/types';
 import { calculateCornerSnap, calculateResizeEdgeSnap } from '../utils/snapping';
 
 interface UseCellResizeOptions {
-  onResize: (points: Point[]) => void;
+  onResize: (cellId: string, points: Point[]) => void;
   onResizeEnd: () => void;
   cells: Cell[];
   scale: number;
@@ -13,6 +13,8 @@ interface UseCellResizeOptions {
   snapEnabled?: boolean;
   snapThreshold?: number;
   onSnapPreview?: (preview: { show: boolean; points: Point[]; matchedCellId: string | null; matchedCellIds: string[] } | null) => void;
+  selectedCellIds?: Set<string>;
+  onMultiCellResize?: (cellId: string, deltaWidth: number, deltaHeight: number, initialCellData: { points: Point[]; bounds: { width: number; height: number } }) => void;
 }
 
 export function useCellResize({ 
@@ -25,23 +27,31 @@ export function useCellResize({
   snapEnabled = true,
   snapThreshold = 5,
   onSnapPreview,
+  selectedCellIds = new Set(),
+  onMultiCellResize,
 }: UseCellResizeOptions) {
   const resizeState = useRef<{
     cellId: string | null;
     cornerIndex: number | null;
     initialPoints: Point[] | null;
+    initialBounds: { width: number; height: number } | null;
     startX: number;
     startY: number;
     imageOffset: { x: number; y: number }; // Store offset at resize start to prevent jitter
     scale: number; // Store scale at resize start to prevent jitter
+    selectedCellIds: Set<string>;
+    initialCells: Map<string, { points: Point[]; bounds: { width: number; height: number } }>;
   }>({
     cellId: null,
     cornerIndex: null,
     initialPoints: null,
+    initialBounds: null,
     startX: 0,
     startY: 0,
     imageOffset: { x: 0, y: 0 },
     scale: 1,
+    selectedCellIds: new Set(),
+    initialCells: new Map(),
   });
 
   const handleCornerMouseDown = useCallback(
@@ -55,17 +65,57 @@ export function useCellResize({
       const svgX = (mouseX - imageOffset.x) / scale;
       const svgY = (mouseY - imageOffset.y) / scale;
 
+      // Calculate initial bounds for the primary cell
+      const bounds = {
+        minX: Math.min(...initialPoints.map(p => p.x)),
+        minY: Math.min(...initialPoints.map(p => p.y)),
+        maxX: Math.max(...initialPoints.map(p => p.x)),
+        maxY: Math.max(...initialPoints.map(p => p.y)),
+      };
+      const initialBounds = {
+        width: bounds.maxX - bounds.minX,
+        height: bounds.maxY - bounds.minY,
+      };
+
+      // Store initial state for all selected cells (if multiple selection)
+      const cellsToResize = selectedCellIds.has(cellId) && selectedCellIds.size > 1 
+        ? selectedCellIds 
+        : new Set([cellId]);
+      
+      const initialCells = new Map<string, { points: Point[]; bounds: { width: number; height: number } }>();
+      cellsToResize.forEach(id => {
+        const cell = cells.find(c => c.id === id);
+        if (cell) {
+          const cellBounds = {
+            minX: Math.min(...cell.points.map(p => p.x)),
+            minY: Math.min(...cell.points.map(p => p.y)),
+            maxX: Math.max(...cell.points.map(p => p.x)),
+            maxY: Math.max(...cell.points.map(p => p.y)),
+          };
+          initialCells.set(id, {
+            points: [...cell.points],
+            bounds: {
+              width: cellBounds.maxX - cellBounds.minX,
+              height: cellBounds.maxY - cellBounds.minY,
+            },
+          });
+        }
+      });
+
       resizeState.current = {
         cellId,
         cornerIndex,
         initialPoints: [...initialPoints],
+        initialBounds,
         startX: svgX,
         startY: svgY,
         imageOffset: { ...imageOffset }, // Store offset at resize start
         scale, // Store scale at resize start
+        selectedCellIds: new Set(cellsToResize),
+        initialCells,
       };
     },
-    [scale, imageOffset, getContainerRect]
+    [scale, imageOffset, getContainerRect, selectedCellIds, cells]
   );
 
   const handleMouseMove = useCallback(
@@ -233,9 +283,38 @@ export function useCellResize({
           break;
       }
 
-      onResize(newPoints);
+      // Calculate new bounds for primary cell
+      const newBounds = {
+        minX: Math.min(...newPoints.map(p => p.x)),
+        minY: Math.min(...newPoints.map(p => p.y)),
+        maxX: Math.max(...newPoints.map(p => p.x)),
+        maxY: Math.max(...newPoints.map(p => p.y)),
+      };
+      const newWidth = newBounds.maxX - newBounds.minX;
+      const newHeight = newBounds.maxY - newBounds.minY;
+
+      // Calculate delta width and height
+      const deltaWidth = newWidth - (resizeState.current.initialBounds?.width || 0);
+      const deltaHeight = newHeight - (resizeState.current.initialBounds?.height || 0);
+
+      // Update primary cell
+      if (resizeState.current.cellId) {
+        onResize(resizeState.current.cellId, newPoints);
+      }
+
+      // If multiple cells are selected, apply same delta width/height to all other cells
+      if (onMultiCellResize && resizeState.current.selectedCellIds.size > 1) {
+        resizeState.current.selectedCellIds.forEach(cellId => {
+          if (cellId !== resizeState.current.cellId) {
+            const initialCellData = resizeState.current.initialCells.get(cellId);
+            if (initialCellData) {
+              onMultiCellResize(cellId, deltaWidth, deltaHeight, initialCellData);
+            }
+          }
+        });
+      }
     },
-    [cells, onResize, getContainerRect, snapEnabled, snapThreshold, onSnapPreview]
+    [cells, onResize, getContainerRect, snapEnabled, snapThreshold, onSnapPreview, onMultiCellResize]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -248,10 +327,13 @@ export function useCellResize({
         cellId: null,
         cornerIndex: null,
         initialPoints: null,
+        initialBounds: null,
         startX: 0,
         startY: 0,
         imageOffset: { x: 0, y: 0 },
         scale: 1,
+        selectedCellIds: new Set(),
+        initialCells: new Map(),
       };
     }
   }, [onResizeEnd, onSnapPreview]);

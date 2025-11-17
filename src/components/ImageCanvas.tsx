@@ -150,12 +150,9 @@ export function ImageCanvas({
   const [wrongBorders, setWrongBorders] = useState<WrongBorderSegment[]>([]);
 
   const { handleCornerMouseDown, handleMouseMove: handleResizeMove, handleMouseUp: handleResizeUp } = useCellResize({
-    onResize: (points) => {
-      // Only resize the first selected cell (or single selected cell)
-      if (selectedCellIds.size === 1) {
-        const cellId = Array.from(selectedCellIds)[0];
-        onCellResize(cellId, points);
-      }
+    onResize: (cellId, points) => {
+      // Resize the primary cell (the one being dragged)
+      onCellResize(cellId, points);
     },
     onResizeEnd: onCellResizeEnd,
     cells,
@@ -164,6 +161,35 @@ export function ImageCanvas({
     getContainerRect: () => containerRef.current?.getBoundingClientRect() || null,
     snapEnabled,
     snapThreshold,
+    selectedCellIds,
+    onMultiCellResize: (cellId, deltaWidth, deltaHeight, initialCellData) => {
+      // Resize other selected cells by the same delta width and height
+      // Use initial bounds to calculate from the original position
+      const initialBounds = {
+        minX: Math.min(...initialCellData.points.map(p => p.x)),
+        minY: Math.min(...initialCellData.points.map(p => p.y)),
+        maxX: Math.max(...initialCellData.points.map(p => p.x)),
+        maxY: Math.max(...initialCellData.points.map(p => p.y)),
+      };
+      
+      // Calculate new width and height from initial size
+      const newWidth = initialCellData.bounds.width + deltaWidth;
+      const newHeight = initialCellData.bounds.height + deltaHeight;
+      
+      // Ensure minimum size
+      if (newWidth <= 0 || newHeight <= 0) return;
+
+      // Keep top-left corner fixed and expand by delta width/height
+      // Cell points order: 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
+      const newPoints: Point[] = [
+        { x: initialBounds.minX, y: initialBounds.minY }, // top-left: keep fixed
+        { x: initialBounds.minX + newWidth, y: initialBounds.minY }, // top-right: expand width
+        { x: initialBounds.minX + newWidth, y: initialBounds.minY + newHeight }, // bottom-right: expand both
+        { x: initialBounds.minX, y: initialBounds.minY + newHeight }, // bottom-left: expand height
+      ];
+
+      onCellResize(cellId, newPoints);
+    },
     onSnapPreview: (preview) => {
       if (preview) {
         setSnapPreview({ show: preview.show, points: preview.points });
@@ -957,7 +983,7 @@ export function ImageCanvas({
                         pointerEvents="none"
                       />
                     ))}
-                    {mode === 'resize' && selected && selectedCellIds.size === 1 && cell.points.map((point, index) => (
+                    {mode === 'resize' && selected && cell.points.map((point, index) => (
                       <circle
                         key={`corner-${index}`}
                         cx={point.x}
