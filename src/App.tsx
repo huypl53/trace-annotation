@@ -23,7 +23,7 @@ function App() {
   const { settings: moveSpeedSettings, updateSettings: updateMoveSpeedSettings } = useMoveSpeedSettings();
   const [pairs, setPairs] = useState<ImageXmlPair[]>([]);
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
-  const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
+  const [selectedCellIds, setSelectedCellIds] = useState<Set<string>>(new Set());
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [isCreatingCell, setIsCreatingCell] = useState(false);
   const [mode, setMode] = useState<'move' | 'resize'>('move');
@@ -221,16 +221,17 @@ function App() {
     };
 
     createCell(newCell);
-    setSelectedCellId(newCell.id);
+    setSelectedCellIds(new Set([newCell.id]));
     setIsCreatingCell(false);
     setMode('resize'); // Switch to resize mode after creating a cell
   }, [isCreatingCell, annotation, createCell]);
 
-  const selectedCell = annotation?.getCellById(selectedCellId || '');
+  const selectedCells = annotation ? Array.from(selectedCellIds).map(id => annotation.getCellById(id)).filter(Boolean) as Cell[] : [];
+  const selectedCell = selectedCells.length === 1 ? selectedCells[0] : null;
 
   // Use refs to store latest values to avoid recreating callbacks
   const moveSpeedSettingsRef = useRef(moveSpeedSettings);
-  const selectedCellIdRef = useRef(selectedCellId);
+  const selectedCellIdsRef = useRef(selectedCellIds);
   const modeRef = useRef(mode);
   const annotationRef = useRef(annotation);
 
@@ -240,8 +241,8 @@ function App() {
   }, [moveSpeedSettings]);
 
   useEffect(() => {
-    selectedCellIdRef.current = selectedCellId;
-  }, [selectedCellId]);
+    selectedCellIdsRef.current = selectedCellIds;
+  }, [selectedCellIds]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -253,40 +254,44 @@ function App() {
 
   // Handle arrow key movement with acceleration in move mode
   const handleArrowKeyMove = useCallback((deltaX: number, deltaY: number) => {
-    const currentSelectedCellId = selectedCellIdRef.current;
+    const currentSelectedCellIds = selectedCellIdsRef.current;
     const currentMode = modeRef.current;
     const currentAnnotation = annotationRef.current;
     const currentSettings = moveSpeedSettingsRef.current;
 
-    if (!currentSelectedCellId || currentMode !== 'move' || !currentAnnotation) return;
+    if (currentSelectedCellIds.size === 0 || currentMode !== 'move' || !currentAnnotation) return;
 
-    const currentCell = currentAnnotation.getCellById(currentSelectedCellId);
-    if (!currentCell) return;
-
-    // Apply snapping if enabled
+    // Apply snapping if enabled (only for single cell selection)
     let finalDeltaX = deltaX;
     let finalDeltaY = deltaY;
 
-    if (currentSettings.snapEnabled) {
-      const otherCells = currentAnnotation.cells.filter(c => c.id !== currentSelectedCellId);
-      // Create a temporary cell copy to calculate snap position
-      const tempCell = new Cell(currentCell.toData());
-      const snapResult = calculateSnap(
-        tempCell,
-        otherCells,
-        deltaX,
-        deltaY,
-        currentSettings.snapThreshold
-      );
-      finalDeltaX = snapResult.deltaX;
-      finalDeltaY = snapResult.deltaY;
+    if (currentSettings.snapEnabled && currentSelectedCellIds.size === 1) {
+      const cellId = Array.from(currentSelectedCellIds)[0];
+      const currentCell = currentAnnotation.getCellById(cellId);
+      if (currentCell) {
+        const otherCells = currentAnnotation.cells.filter(c => c.id !== cellId);
+        // Create a temporary cell copy to calculate snap position
+        const tempCell = new Cell(currentCell.toData());
+        const snapResult = calculateSnap(
+          tempCell,
+          otherCells,
+          deltaX,
+          deltaY,
+          currentSettings.snapThreshold
+        );
+        finalDeltaX = snapResult.deltaX;
+        finalDeltaY = snapResult.deltaY;
+      }
     }
 
-    moveCell(currentSelectedCellId, finalDeltaX, finalDeltaY);
+    // Move all selected cells
+    currentSelectedCellIds.forEach(cellId => {
+      moveCell(cellId, finalDeltaX, finalDeltaY);
+    });
   }, [moveCell]);
 
   useArrowKeyMovement({
-    enabled: mode === 'move' && selectedCellId !== null && !isCreatingCell,
+    enabled: mode === 'move' && selectedCellIds.size > 0 && !isCreatingCell,
     onMove: handleArrowKeyMove,
     baseSpeed: moveSpeedSettings.baseSpeed,
     maxSpeed: moveSpeedSettings.maxSpeed,
@@ -477,14 +482,16 @@ function App() {
             <div className="cell-actions">
               <button
                 onClick={() => {
-                  if (selectedCellId) {
-                    removeCell(selectedCellId);
-                    setSelectedCellId(null);
+                  if (selectedCellIds.size > 0) {
+                    selectedCellIds.forEach(cellId => {
+                      removeCell(cellId);
+                    });
+                    setSelectedCellIds(new Set());
                   }
                 }}
-                disabled={!annotation || !selectedCellId}
+                disabled={!annotation || selectedCellIds.size === 0}
               >
-                Remove Cell
+                Remove {selectedCellIds.size > 1 ? `${selectedCellIds.size} Cells` : 'Cell'}
               </button>
             </div>
             <div className="undo-redo-buttons">
@@ -520,8 +527,8 @@ function App() {
           <ImageCanvas
             imageUrl={currentImageUrl}
             annotation={annotation}
-            selectedCellId={selectedCellId}
-            onCellSelect={setSelectedCellId}
+            selectedCellIds={selectedCellIds}
+            onCellSelect={(cellIds) => setSelectedCellIds(cellIds)}
             onCellMove={moveCell}
             onCellMoveEnd={(cellId, shouldSnap, snapDeltaX, snapDeltaY) => {
               if (shouldSnap) {
@@ -589,13 +596,16 @@ function App() {
             <EdgeControls
               cell={selectedCell || null}
               onUpdate={lines => {
-                if (selectedCellId) {
-                  updateCellLines(selectedCellId, lines);
-                }
+                // Apply to all selected cells
+                selectedCellIds.forEach(cellId => {
+                  updateCellLines(cellId, lines);
+                });
               }}
               onUpdatePoints={points => {
-                if (selectedCellId) {
-                  updateCellPoints(selectedCellId, points);
+                // Only update if single cell selected
+                if (selectedCellIds.size === 1) {
+                  const cellId = Array.from(selectedCellIds)[0];
+                  updateCellPoints(cellId, points);
                 }
               }}
               onUpdateColor={color => {

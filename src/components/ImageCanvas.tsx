@@ -13,8 +13,8 @@ import { WrongBorderRenderer } from './WrongBorderRenderer';
 interface ImageCanvasProps {
   imageUrl: string | null;
   annotation: Annotation | null;
-  selectedCellId: string | null;
-  onCellSelect: (cellId: string | null) => void;
+  selectedCellIds: Set<string>;
+  onCellSelect: (cellIds: Set<string>) => void;
   onCellMove: (cellId: string, deltaX: number, deltaY: number) => void;
   onCellMoveEnd: (cellId: string, shouldSnap: boolean, snapDeltaX: number, snapDeltaY: number) => void;
   onCellResize: (cellId: string, points: Point[]) => void;
@@ -32,7 +32,7 @@ interface ImageCanvasProps {
 export function ImageCanvas({
   imageUrl,
   annotation,
-  selectedCellId,
+  selectedCellIds,
   onCellSelect,
   onCellMove,
   onCellMoveEnd,
@@ -184,12 +184,11 @@ export function ImageCanvas({
 
   // Drag state using refs for direct DOM manipulation
   const dragState = useRef<{
-    cellId: string | null;
-    cellGroupElement: SVGGElement | null;
+    cellIds: Set<string>;
+    cellGroupElements: Map<string, SVGGElement>;
     startX: number;
     startY: number;
-    initialCell: Cell | null;
-    initialBounds: { minX: number; minY: number } | null;
+    initialCells: Map<string, Cell>;
     currentDeltaX: number;
     currentDeltaY: number;
     imageOffset: { x: number; y: number };
@@ -198,12 +197,11 @@ export function ImageCanvas({
     snapDeltaX: number;
     snapDeltaY: number;
   }>({
-    cellId: null,
-    cellGroupElement: null,
+    cellIds: new Set(),
+    cellGroupElements: new Map(),
     startX: 0,
     startY: 0,
-    initialCell: null,
-    initialBounds: null,
+    initialCells: new Map(),
     currentDeltaX: 0,
     currentDeltaY: 0,
     imageOffset: { x: 0, y: 0 },
@@ -221,8 +219,10 @@ export function ImageCanvas({
 
   const { handleCornerMouseDown, handleMouseMove: handleResizeMove, handleMouseUp: handleResizeUp } = useCellResize({
     onResize: (points) => {
-      if (selectedCellId) {
-        onCellResize(selectedCellId, points);
+      // Only resize the first selected cell (or single selected cell)
+      if (selectedCellIds.size === 1) {
+        const cellId = Array.from(selectedCellIds)[0];
+        onCellResize(cellId, points);
       }
     },
     onResizeEnd: onCellResizeEnd,
@@ -242,45 +242,59 @@ export function ImageCanvas({
 
   // Direct DOM manipulation for cell dragging
   const handleCellMouseDown = useCallback((e: React.MouseEvent, cellId: string) => {
-    if (mode !== 'move') return;
+    if (mode !== 'move') {
+      return;
+    }
+    
+    // Don't start drag if Ctrl/Cmd or Shift is pressed - let onClick handle selection
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      return;
+    }
+    
     e.preventDefault();
     e.stopPropagation();
     
     const cell = cells.find(c => c.id === cellId);
-    if (!cell) return;
+    if (!cell) {
+      return;
+    }
+
+    // Determine which cells to drag: if clicked cell is selected, drag all selected; otherwise just this cell
+    const cellsToDrag = selectedCellIds.has(cellId) ? selectedCellIds : new Set([cellId]);
 
     const containerRect = containerRef.current?.getBoundingClientRect();
-    if (!containerRect) return;
+    if (!containerRect) {
+      return;
+    }
 
     const mouseX = e.clientX - containerRect.left;
     const mouseY = e.clientY - containerRect.top;
     const svgX = (mouseX - displayOffset.x) / scale;
     const svgY = (mouseY - displayOffset.y) / scale;
 
-    console.log('[Zoom Debug] handleCellMouseDown coordinate transformation:');
-    console.log('  clientX:', e.clientX, 'clientY:', e.clientY);
-    console.log('  containerRect:', { left: containerRect.left, top: containerRect.top, width: containerRect.width, height: containerRect.height });
-    console.log('  mouseX:', mouseX, 'mouseY:', mouseY);
-    console.log('  displayOffset:', { x: displayOffset.x, y: displayOffset.y });
-    console.log('  scale:', scale);
-    console.log('  svgX:', svgX, 'svgY:', svgY);
-    const cellBounds = cell.getBounds();
-    console.log('  cellBounds:', { minX: cellBounds.minX, minY: cellBounds.minY, maxX: cellBounds.maxX, maxY: cellBounds.maxY });
-    console.log('  userZoom:', userZoom, 'baseScale:', baseScale);
-    console.log('  imageSize:', imageSize ? { width: imageSize.width, height: imageSize.height } : null);
-    console.log('  originalImageSize:', originalImageSize ? { width: originalImageSize.width, height: originalImageSize.height } : null);
-
     const targetEdge = detectNearestEdge(cell, { x: svgX, y: svgY });
-    const initialBounds = cell.getBounds();
-    const cellGroupElement = cellGroupRefs.current.get(cellId);
+    
+    // Store initial state for all cells being dragged
+    const initialCells = new Map<string, Cell>();
+    const cellGroupElements = new Map<string, SVGGElement>();
+    
+    cellsToDrag.forEach(id => {
+      const c = cells.find(c => c.id === id);
+      if (c) {
+        initialCells.set(id, new Cell(c.toData()));
+        const element = cellGroupRefs.current.get(id);
+        if (element) {
+          cellGroupElements.set(id, element);
+        }
+      }
+    });
 
     dragState.current = {
-      cellId,
-      cellGroupElement: cellGroupElement || null,
+      cellIds: new Set(cellsToDrag),
+      cellGroupElements,
       startX: svgX,
       startY: svgY,
-      initialCell: new Cell(cell.toData()),
-      initialBounds: { minX: initialBounds.minX, minY: initialBounds.minY },
+      initialCells,
       currentDeltaX: 0,
       currentDeltaY: 0,
       imageOffset: { ...displayOffset },
@@ -290,45 +304,52 @@ export function ImageCanvas({
       snapDeltaY: 0,
     };
     
-    // Check for initial snap position (when delta is 0) to show preview immediately if cell is already close
-    if (snapEnabled) {
-      const otherCells = cells.filter(c => c.id !== cellId);
+    // Check for initial snap position (only for single cell, using the clicked cell)
+    if (snapEnabled && cellsToDrag.size === 1) {
+      const otherCells = cells.filter(c => !cellsToDrag.has(c.id));
       const snapThresholdInSvg = snapThreshold / scale;
-      const initialSnapResult = calculateSnap(
-        dragState.current.initialCell!,
-        otherCells,
-        0,
-        0,
-        snapThresholdInSvg,
-        targetEdge || undefined
-      );
-      
-      if (initialSnapResult.snapped && initialSnapResult.matchedCellId) {
-        dragState.current.snapDeltaX = initialSnapResult.deltaX;
-        dragState.current.snapDeltaY = initialSnapResult.deltaY;
-        const previewCell = new Cell(dragState.current.initialCell!.toData());
-        previewCell.move(initialSnapResult.deltaX, initialSnapResult.deltaY);
-        const previewPoints = previewCell.points;
-        setSnapPreview({ show: true, points: previewPoints });
-        setSnappedCellId(initialSnapResult.matchedCellId);
-        setSnappedCellIds(new Set(initialSnapResult.matchedCellIds));
-      } else {
-        setSnapPreview(null);
-        setSnappedCellId(null);
-        setSnappedCellIds(new Set());
+      const initialCell = initialCells.get(cellId);
+      if (initialCell) {
+        const initialSnapResult = calculateSnap(
+          initialCell,
+          otherCells,
+          0,
+          0,
+          snapThresholdInSvg,
+          targetEdge || undefined
+        );
+        
+        if (initialSnapResult.snapped && initialSnapResult.matchedCellId) {
+          dragState.current.snapDeltaX = initialSnapResult.deltaX;
+          dragState.current.snapDeltaY = initialSnapResult.deltaY;
+          const previewCell = new Cell(initialCell.toData());
+          previewCell.move(initialSnapResult.deltaX, initialSnapResult.deltaY);
+          const previewPoints = previewCell.points;
+          setSnapPreview({ show: true, points: previewPoints });
+          setSnappedCellId(initialSnapResult.matchedCellId);
+          setSnappedCellIds(new Set(initialSnapResult.matchedCellIds));
+        } else {
+          setSnapPreview(null);
+          setSnappedCellId(null);
+          setSnappedCellIds(new Set());
+        }
       }
     } else {
       setSnapPreview(null);
       setSnappedCellId(null);
       setSnappedCellIds(new Set());
     }
-  }, [cells, scale, displayOffset, mode, snapEnabled, snapThreshold]);
+  }, [cells, scale, displayOffset, mode, snapEnabled, snapThreshold, selectedCellIds]);
 
   const handleCellMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragState.current.cellId || !dragState.current.initialCell || !dragState.current.cellGroupElement) return;
+    if (dragState.current.cellIds.size === 0 || dragState.current.initialCells.size === 0) {
+      return;
+    }
 
     const containerRect = containerRef.current?.getBoundingClientRect();
-    if (!containerRect) return;
+    if (!containerRect) {
+      return;
+    }
 
     const storedOffset = dragState.current.imageOffset;
     const storedScale = dragState.current.scale;
@@ -341,60 +362,50 @@ export function ImageCanvas({
     const rawDeltaX = svgX - dragState.current.startX;
     const rawDeltaY = svgY - dragState.current.startY;
 
-    console.log('[Zoom Debug] handleCellMouseMove coordinate transformation:');
-    console.log('  clientX:', e.clientX, 'clientY:', e.clientY);
-    console.log('  containerRect:', { left: containerRect.left, top: containerRect.top, width: containerRect.width, height: containerRect.height });
-    console.log('  mouseX:', mouseX, 'mouseY:', mouseY);
-    console.log('  storedOffset:', { x: storedOffset.x, y: storedOffset.y });
-    console.log('  currentDisplayOffset:', { x: displayOffset.x, y: displayOffset.y });
-    console.log('  storedScale:', storedScale, 'currentScale:', scale);
-    console.log('  svgX:', svgX, 'svgY:', svgY);
-    console.log('  startX:', dragState.current.startX, 'startY:', dragState.current.startY);
-    console.log('  rawDeltaX:', rawDeltaX, 'rawDeltaY:', rawDeltaY);
-    console.log('  scaleMismatch:', storedScale !== scale);
-    console.log('  offsetMismatch:', storedOffset.x !== displayOffset.x || storedOffset.y !== displayOffset.y);
-
-    // Update DOM directly with transform
+    // Update DOM directly with transform for all dragged cells
     dragState.current.currentDeltaX = rawDeltaX;
     dragState.current.currentDeltaY = rawDeltaY;
-    dragState.current.cellGroupElement.setAttribute('transform', `translate(${rawDeltaX}, ${rawDeltaY})`);
+    dragState.current.cellGroupElements.forEach((element) => {
+      element.setAttribute('transform', `translate(${rawDeltaX}, ${rawDeltaY})`);
+    });
 
-    // Calculate snap preview only if snap is enabled
-    if (snapEnabled) {
-      const otherCells = cells.filter(c => c.id !== dragState.current.cellId);
-      // Convert snap threshold from display pixels to SVG coordinates
-      const snapThresholdInSvg = snapThreshold / storedScale;
-      const snapResult = calculateSnap(
-        dragState.current.initialCell,
-        otherCells,
-        rawDeltaX,
-        rawDeltaY,
-        snapThresholdInSvg,
-        dragState.current.targetEdge || undefined
-      );
+    // Calculate snap preview only if snap is enabled and single cell
+    if (snapEnabled && dragState.current.cellIds.size === 1) {
+      const cellId = Array.from(dragState.current.cellIds)[0];
+      const initialCell = dragState.current.initialCells.get(cellId);
+      if (initialCell) {
+        const otherCells = cells.filter(c => !dragState.current.cellIds.has(c.id));
+        // Convert snap threshold from display pixels to SVG coordinates
+        const snapThresholdInSvg = snapThreshold / storedScale;
+        const snapResult = calculateSnap(
+          initialCell,
+          otherCells,
+          rawDeltaX,
+          rawDeltaY,
+          snapThresholdInSvg,
+          dragState.current.targetEdge || undefined
+        );
 
-      if (snapResult.snapped && snapResult.matchedCellId) {
-        dragState.current.snapDeltaX = snapResult.deltaX;
-        dragState.current.snapDeltaY = snapResult.deltaY;
-        // Create preview from current dragged position, then apply snap offset
-        // The snap delta is relative to initial position, so we need to calculate
-        // the snap offset relative to current dragged position
-        const currentCell = new Cell(dragState.current.initialCell.toData());
-        currentCell.move(rawDeltaX, rawDeltaY); // Move to current dragged position
-        const snapOffsetX = snapResult.deltaX - rawDeltaX; // Offset from current to snapped
-        const snapOffsetY = snapResult.deltaY - rawDeltaY;
-        currentCell.move(snapOffsetX, snapOffsetY); // Apply snap offset
-        const previewPoints = currentCell.points;
-        setSnapPreview({ show: true, points: previewPoints });
-        setSnappedCellId(snapResult.matchedCellId);
-        setSnappedCellIds(new Set(snapResult.matchedCellIds));
-      } else {
-        dragState.current.snapDeltaX = 0;
-        dragState.current.snapDeltaY = 0;
-        // Always update state to ensure UI reflects current state
-        setSnapPreview(null);
-        setSnappedCellId(null);
-        setSnappedCellIds(new Set());
+        if (snapResult.snapped && snapResult.matchedCellId) {
+          dragState.current.snapDeltaX = snapResult.deltaX;
+          dragState.current.snapDeltaY = snapResult.deltaY;
+          // Create preview from current dragged position, then apply snap offset
+          const currentCell = new Cell(initialCell.toData());
+          currentCell.move(rawDeltaX, rawDeltaY); // Move to current dragged position
+          const snapOffsetX = snapResult.deltaX - rawDeltaX; // Offset from current to snapped
+          const snapOffsetY = snapResult.deltaY - rawDeltaY;
+          currentCell.move(snapOffsetX, snapOffsetY); // Apply snap offset
+          const previewPoints = currentCell.points;
+          setSnapPreview({ show: true, points: previewPoints });
+          setSnappedCellId(snapResult.matchedCellId);
+          setSnappedCellIds(new Set(snapResult.matchedCellIds));
+        } else {
+          dragState.current.snapDeltaX = 0;
+          dragState.current.snapDeltaY = 0;
+          setSnapPreview(null);
+          setSnappedCellId(null);
+          setSnappedCellIds(new Set());
+        }
       }
     } else {
       dragState.current.snapDeltaX = 0;
@@ -406,38 +417,40 @@ export function ImageCanvas({
   }, [cells, snapEnabled, snapThreshold]);
 
   const handleCellMouseUp = useCallback(() => {
-    if (!dragState.current.cellId) return;
+    if (dragState.current.cellIds.size === 0) {
+      return;
+    }
 
     // Calculate final delta before removing transform
-    const shouldSnap = snapPreview?.show && snapPreview.points.length > 0 && snappedCellId !== null;
+    const shouldSnap = snapPreview?.show && snapPreview.points.length > 0 && snappedCellId !== null && dragState.current.cellIds.size === 1;
     let finalDeltaX = dragState.current.currentDeltaX;
     let finalDeltaY = dragState.current.currentDeltaY;
 
-    // Remove transform from DOM
-    if (dragState.current.cellGroupElement) {
-      dragState.current.cellGroupElement.removeAttribute('transform');
-    }
+    // Remove transform from DOM for all dragged cells
+    dragState.current.cellGroupElements.forEach((element) => {
+      element.removeAttribute('transform');
+    });
 
-    const draggedCellId = dragState.current.cellId;
-    
-    if (shouldSnap && dragState.current.initialCell) {
-      // After transform removal, cell is at original position in data model
-      // snapDeltaX/Y are already relative to initial position, so use them directly
-      onCellMoveEnd(draggedCellId, shouldSnap, dragState.current.snapDeltaX, dragState.current.snapDeltaY);
-    } else {
-      // No snapping - apply the current drag position
-      onCellMove(draggedCellId, finalDeltaX, finalDeltaY);
-      onCellMoveEnd(draggedCellId, false, 0, 0);
-    }
+    // Apply movement to all dragged cells
+    dragState.current.cellIds.forEach(cellId => {
+      if (shouldSnap && dragState.current.initialCells.has(cellId)) {
+        // After transform removal, cell is at original position in data model
+        // snapDeltaX/Y are already relative to initial position, so use them directly
+        onCellMoveEnd(cellId, shouldSnap, dragState.current.snapDeltaX, dragState.current.snapDeltaY);
+      } else {
+        // No snapping - apply the current drag position
+        onCellMove(cellId, finalDeltaX, finalDeltaY);
+        onCellMoveEnd(cellId, false, 0, 0);
+      }
+    });
 
     // Reset drag state
     dragState.current = {
-      cellId: null,
-      cellGroupElement: null,
+      cellIds: new Set(),
+      cellGroupElements: new Map(),
       startX: 0,
       startY: 0,
-      initialCell: null,
-      initialBounds: null,
+      initialCells: new Map(),
       currentDeltaX: 0,
       currentDeltaY: 0,
       imageOffset: { x: 0, y: 0 },
@@ -449,14 +462,14 @@ export function ImageCanvas({
     setSnapPreview(null);
     setSnappedCellId(null);
     setSnappedCellIds(new Set());
-  }, [snapPreview, snappedCellId, cells, onCellMove, onCellMoveEnd]);
+  }, [snapPreview, snappedCellId, onCellMove, onCellMoveEnd]);
 
   const handleMouseMoveCombined = (e: React.MouseEvent) => {
     if (isCreating) {
       handleCreateMove(e);
     } else if (mode === 'resize') {
       handleResizeMove(e);
-    } else if (dragState.current.cellId) {
+    } else if (dragState.current.cellIds.size > 0) {
       handleCellMouseMove(e);
     }
   };
@@ -466,7 +479,7 @@ export function ImageCanvas({
       handleCreateUp();
     } else if (mode === 'resize') {
       handleResizeUp();
-    } else if (dragState.current.cellId) {
+    } else if (dragState.current.cellIds.size > 0) {
       handleCellMouseUp();
     }
   };
@@ -717,6 +730,21 @@ export function ImageCanvas({
     }
   };
 
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    // Deselect all cells when clicking on canvas background (not on a cell)
+    // Only if not creating a cell and not using modifier keys
+    // Cell clicks stop propagation, so if we get here, it's a background click
+    if (!onCreateCell && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      const target = e.target as HTMLElement;
+      // Deselect if clicking on the canvas div, SVG container, or preview rect (not on a cell polygon)
+      if (target === containerRef.current || 
+          target.tagName === 'svg' || 
+          (target.tagName === 'rect' && target.getAttribute('fill')?.includes('rgba(0, 123, 255'))) {
+        onCellSelect(new Set());
+      }
+    }
+  };
+
   if (!imageUrl) {
     return (
       <div className="image-canvas empty">
@@ -742,6 +770,7 @@ export function ImageCanvas({
       onMouseMove={handleMouseMoveCombined}
       onMouseUp={handleMouseUpCombined}
       onMouseDown={handleCanvasMouseDown}
+      onClick={handleCanvasClick}
       onMouseLeave={handleMouseUpCombined}
       onContextMenu={(e) => e.preventDefault()} // Prevent context menu on middle click
       style={{ cursor: onCreateCell ? 'crosshair' : 'default' }}
@@ -792,6 +821,15 @@ export function ImageCanvas({
                 pointerEvents: onCreateCell ? 'none' : 'all',
               }}
             >
+              <defs>
+                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
               {annotation.cells.map(cell => {
                 const pointsString = cell.points.map(p => `${p.x},${p.y}`).join(' ');
                 const bounds = cell.getBounds();
@@ -799,7 +837,7 @@ export function ImageCanvas({
                 const right = bounds.maxX;
                 const top = bounds.minY;
                 const bottom = bounds.maxY;
-                const selected = cell.id === selectedCellId;
+                const selected = selectedCellIds.has(cell.id);
                 const isSnappedCell = snappedCellIds.has(cell.id);
                 const VISIBLE_EDGE_COLOR = '#2563eb';
                 const INVISIBLE_EDGE_COLOR = '#94a3b8';
@@ -815,8 +853,11 @@ export function ImageCanvas({
                 };
                 const rgb = hexToRgb(cell.color);
                 const CELL_FILL = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${cell.opacity})`;
-                const SELECTED_FILL = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.min(cell.opacity * 2, 1)})`;
+                const SELECTED_FILL = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${Math.min(cell.opacity * 1.2, 1)})`;
                 const SNAP_MATCHED_FILL = 'rgba(34, 197, 94, 0.2)';
+                const SELECTED_STROKE_COLOR = '#ff6b00'; // Bright orange
+                const SELECTED_STROKE_WIDTH = 5;
+                const SELECTED_GLOW_COLOR = '#ff6b00';
                 const CORNER_HANDLE_SIZE = 8;
                 const CORNER_HANDLE_COLOR = '#2563eb';
                 const CORNER_HANDLE_FILL = '#ffffff';
@@ -834,14 +875,56 @@ export function ImageCanvas({
                       }
                     }}
                   >
+                    {selected && (
+                      <>
+                        {/* Outer glow effect */}
+                        <polygon
+                          points={pointsString}
+                          fill="none"
+                          stroke={SELECTED_GLOW_COLOR}
+                          strokeWidth={SELECTED_STROKE_WIDTH + 6}
+                          opacity={0.5}
+                          pointerEvents="none"
+                          filter="url(#glow)"
+                        />
+                        {/* Middle highlight layer */}
+                        <polygon
+                          points={pointsString}
+                          fill="none"
+                          stroke={SELECTED_STROKE_COLOR}
+                          strokeWidth={SELECTED_STROKE_WIDTH + 2}
+                          opacity={0.7}
+                          pointerEvents="none"
+                        />
+                      </>
+                    )}
                     <polygon
                       points={pointsString}
                       fill={selected ? SELECTED_FILL : (isSnappedCell ? SNAP_MATCHED_FILL : CELL_FILL)}
-                      stroke="none"
+                      stroke={selected ? SELECTED_STROKE_COLOR : 'none'}
+                      strokeWidth={selected ? SELECTED_STROKE_WIDTH : 0}
+                      strokeDasharray={selected ? '10,5' : 'none'}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       onMouseDown={mode === 'move' ? (e) => handleCellMouseDown(e, cell.id) : undefined}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onCellSelect(cell.id === selectedCellId ? null : cell.id);
+                        const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+                        const isShift = e.shiftKey;
+                        
+                        if (isCtrlOrMeta || isShift) {
+                          // Toggle selection: add if not selected, remove if selected
+                          const newSelection = new Set(selectedCellIds);
+                          if (newSelection.has(cell.id)) {
+                            newSelection.delete(cell.id);
+                          } else {
+                            newSelection.add(cell.id);
+                          }
+                          onCellSelect(newSelection);
+                        } else {
+                          // Single selection: select only this cell
+                          onCellSelect(new Set([cell.id]));
+                        }
                       }}
                       style={{ cursor: mode === 'resize' ? 'default' : (mode === 'move' ? 'move' : 'default') }}
                     />
@@ -857,7 +940,7 @@ export function ImageCanvas({
                         pointerEvents="none"
                       />
                     ))}
-                    {mode === 'resize' && selected && cell.points.map((point, index) => (
+                    {mode === 'resize' && selected && selectedCellIds.size === 1 && cell.points.map((point, index) => (
                       <circle
                         key={`corner-${index}`}
                         cx={point.x}
