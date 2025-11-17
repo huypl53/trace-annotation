@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { checkFilesExist, uploadFiles } from '../utils/fileApi';
+import { checkFilesExist, uploadFiles, scaleImageFile } from '../utils/fileApi';
 import { OverwriteWarningDialog } from './OverwriteWarningDialog';
 import { convertJsonFilesToXml, isJsonFile, ConversionResult } from '../utils/json2xmlConverter';
 
@@ -13,6 +13,33 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
   const [showWarning, setShowWarning] = useState(false);
   const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [imageScale, setImageScale] = useState<string>('1');
+  const [isScaling, setIsScaling] = useState(false);
+
+  const isImageFile = (file: File): boolean => {
+    return file.type.startsWith('image/');
+  };
+
+  const scaleImages = async (files: File[], scale: number): Promise<File[]> => {
+    if (scale === 1) {
+      return files;
+    }
+
+    setIsScaling(true);
+    try {
+      const scaledFiles = await Promise.all(
+        files.map(async (file) => {
+          if (isImageFile(file)) {
+            return await scaleImageFile(file, scale);
+          }
+          return file;
+        })
+      );
+      return scaledFiles;
+    } finally {
+      setIsScaling(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -27,9 +54,15 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
     setConversionResult(null);
 
     try {
+      // Get scale factor
+      const scale = parseFloat(imageScale) || 1;
+      
       // Separate JSON files from other files
       const jsonFiles = files.filter(isJsonFile);
       const otherFiles = files.filter(f => !isJsonFile(f));
+
+      // Scale image files if scale is not 1
+      const scaledFiles = await scaleImages(otherFiles, scale);
 
       // Convert JSON files to XML
       let convertedXmlFiles: File[] = [];
@@ -58,8 +91,8 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
         }
       }
 
-      // Combine converted XML files with other files
-      const allFiles = [...otherFiles, ...convertedXmlFiles];
+      // Combine scaled files with converted XML files
+      const allFiles = [...scaledFiles, ...convertedXmlFiles];
 
       if (allFiles.length === 0) {
         // Only JSON files were uploaded but conversion failed
@@ -84,22 +117,24 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
       // If check fails, proceed anyway (server might be down)
       const jsonFiles = files.filter(isJsonFile);
       const otherFiles = files.filter(f => !isJsonFile(f));
+      const scale = parseFloat(imageScale) || 1;
+      const scaledFiles = await scaleImages(otherFiles, scale);
       
       if (jsonFiles.length > 0) {
         setIsConverting(true);
         try {
           const result = await convertJsonFilesToXml(jsonFiles, files);
           setConversionResult(result);
-          const allFiles = [...otherFiles, ...result.xmlFiles];
+          const allFiles = [...scaledFiles, ...result.xmlFiles];
           await proceedWithUpload(allFiles);
         } catch (convError) {
           console.error('Error converting JSON:', convError);
-          await proceedWithUpload(otherFiles);
+          await proceedWithUpload(scaledFiles);
         } finally {
           setIsConverting(false);
         }
       } else {
-        await proceedWithUpload(files);
+        await proceedWithUpload(scaledFiles);
       }
     }
   };
@@ -119,7 +154,10 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
 
   const handleConfirm = async () => {
     setShowWarning(false);
-    await proceedWithUpload(pendingFiles);
+    // Scale images in pending files if needed
+    const scale = parseFloat(imageScale) || 1;
+    const scaledPendingFiles = await scaleImages(pendingFiles, scale);
+    await proceedWithUpload(scaledPendingFiles);
     setPendingFiles([]);
     setExistingFiles([]);
   };
@@ -141,11 +179,33 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
             accept="image/*,.xml,text/xml,.json,application/json"
             multiple
             onChange={handleFileChange}
-            disabled={isConverting}
+            disabled={isConverting || isScaling}
           />
+          <div className="scale-input-group">
+            <label className="scale-input-label">
+              <span>Image Scale Factor:</span>
+              <input
+                type="number"
+                value={imageScale}
+                onChange={(e) => setImageScale(e.target.value)}
+                disabled={isConverting || isScaling}
+                className="scale-input"
+                min="0.01"
+                max="10"
+                step="0.01"
+                placeholder="1.0"
+                title="Scale factor to apply to images before upload (e.g., 1.5 for 150%)"
+              />
+            </label>
+          </div>
           {isConverting && (
             <div className="conversion-status">
               <span>Converting JSON to XML...</span>
+            </div>
+          )}
+          {isScaling && (
+            <div className="conversion-status">
+              <span>Scaling images...</span>
             </div>
           )}
         </div>

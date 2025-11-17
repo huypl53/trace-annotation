@@ -109,3 +109,76 @@ export async function deleteFile(filename: string): Promise<void> {
   }
 }
 
+/**
+ * Check if a file is an image file
+ */
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/');
+}
+
+/**
+ * Scale an image file and return a new File with the scaled image
+ * @param imageFile - The original image file
+ * @param scale - The scale factor (e.g., 1.5 for 150%)
+ * @returns A new File with the scaled image
+ */
+export async function scaleImageFile(imageFile: File, scale: number): Promise<File> {
+  if (scale === 1) {
+    return imageFile;
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(imageFile);
+    
+    img.onload = () => {
+      // Clean up the object URL
+      URL.revokeObjectURL(objectUrl);
+      
+      // Calculate scaled dimensions
+      const scaledWidth = Math.round(img.width * scale);
+      const scaledHeight = Math.round(img.height * scale);
+
+      // Create canvas and draw scaled image
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      // Use high-quality image scaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Draw the scaled image
+      ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+
+      // Convert to blob and create File
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Failed to create blob'));
+          return;
+        }
+        
+        // Preserve original filename and type
+        const scaledFile = new File([blob], imageFile.name, { 
+          type: imageFile.type || 'image/png',
+          lastModified: imageFile.lastModified 
+        });
+        resolve(scaledFile);
+      }, imageFile.type || 'image/png');
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to load image'));
+    };
+    
+    img.src = objectUrl;
+  });
+}
+

@@ -53,11 +53,79 @@ export class JsonToXmlConverter {
    * Extract all table items from JSON data
    */
   private extractTablesFromJson(jsonData: any): JsonTableData[] {
+    // If jsonData is an array, filter for tables
     if (Array.isArray(jsonData)) {
       return jsonData.filter((item: any) => item?.type === 'table');
-    } else if (jsonData?.type === 'table') {
+    }
+
+    // If jsonData is a single table object
+    if (jsonData?.type === 'table') {
       return [jsonData];
     }
+
+    // Check for nested structures
+    if (jsonData && typeof jsonData === 'object') {
+      // Check if there's a 'tables' array
+      if (Array.isArray(jsonData.tables)) {
+        return jsonData.tables.filter((item: any) => item?.type === 'table');
+      }
+
+      // Check if there's an 'items' array (common structure)
+      if (Array.isArray(jsonData.items)) {
+        const tables = jsonData.items.filter((item: any) => item?.type === 'table');
+        if (tables.length > 0) {
+          return tables;
+        }
+      }
+
+      // Check if items is an object with tables
+      if (jsonData.items && Array.isArray(jsonData.items.tables)) {
+        return jsonData.items.tables.filter((item: any) => item?.type === 'table');
+      }
+
+      // Check if items is an object and itself contains tables
+      if (jsonData.items && typeof jsonData.items === 'object' && !Array.isArray(jsonData.items)) {
+        // Try to find any array properties that might contain tables
+        for (const key in jsonData.items) {
+          if (Array.isArray(jsonData.items[key])) {
+            const tables = jsonData.items[key].filter((item: any) => item?.type === 'table');
+            if (tables.length > 0) {
+              return tables;
+            }
+          }
+        }
+      }
+
+      // Last resort: recursively search for arrays containing table objects
+      const foundTables: JsonTableData[] = [];
+      const searchForTables = (obj: any): void => {
+        if (!obj || typeof obj !== 'object') return;
+
+        if (Array.isArray(obj)) {
+          obj.forEach(item => {
+            if (item?.type === 'table') {
+              foundTables.push(item);
+            } else if (item && typeof item === 'object') {
+              searchForTables(item);
+            }
+          });
+        } else {
+          for (const key in obj) {
+            if (Array.isArray(obj[key])) {
+              searchForTables(obj[key]);
+            } else if (obj[key] && typeof obj[key] === 'object') {
+              searchForTables(obj[key]);
+            }
+          }
+        }
+      };
+
+      searchForTables(jsonData);
+      if (foundTables.length > 0) {
+        return foundTables;
+      }
+    }
+
     return [];
   }
 
@@ -456,10 +524,7 @@ ${tablesXml}
           continue;
         }
 
-        // Extract items if present
-        jsonData = jsonData.items || jsonData;
-
-        // Extract all tables
+        // Extract all tables (extractTablesFromJson handles items internally)
         const tables = this.extractTablesFromJson(jsonData);
 
         if (tables.length === 0) {

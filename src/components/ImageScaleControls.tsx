@@ -36,16 +36,6 @@ export function ImageScaleControls({ currentScale, onSetScale, disabled = false,
     }
   };
 
-  const handleApply = () => {
-    const numValue = parseFloat(inputValue);
-    if (!isNaN(numValue) && numValue > 0) {
-      onSetScale(numValue);
-    } else {
-      // Reset to current scale if invalid
-      setInputValue(currentScale.toString());
-    }
-  };
-
   return (
     <div className="image-scale-controls">
       <h4 className="section-header-with-tooltip" title="Scale the image display size to correct incorrect input image dimensions. This affects how the image is displayed but does not change cell coordinates.">
@@ -60,11 +50,6 @@ export function ImageScaleControls({ currentScale, onSetScale, disabled = false,
             value={inputValue}
             onChange={handleInputChange}
             onBlur={handleInputBlur}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleApply();
-              }
-            }}
             disabled={disabled}
             className="scale-input"
             min="0.01"
@@ -73,14 +58,6 @@ export function ImageScaleControls({ currentScale, onSetScale, disabled = false,
             placeholder="1.0"
           />
         </label>
-        <button
-          onClick={handleApply}
-          disabled={disabled}
-          className="scale-apply-button"
-          title="Apply scale factor"
-        >
-          Apply
-        </button>
       </div>
       {onDownloadImage && imageUrl && (
         <div className="scale-download-group">
