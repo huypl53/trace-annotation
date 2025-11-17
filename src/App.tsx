@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { EdgeControls } from './components/EdgeControls';
 import { FileUpload } from './components/FileUpload';
 import { HintSlider } from './components/HintSlider';
@@ -18,7 +19,7 @@ import { calculateSnap } from './utils/snapping';
 import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 import { findOverlappingCellGroup } from './utils/polygonIntersection';
-import { listFiles, downloadFile } from './utils/fileApi';
+import { listFiles, downloadFile, deleteFile } from './utils/fileApi';
 
 function App() {
   const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
@@ -35,6 +36,17 @@ function App() {
   const [detectWrongBorders, setDetectWrongBorders] = useState(false);
   const [horizontalPadding, setHorizontalPadding] = useState(2);
   const [verticalPadding, setVerticalPadding] = useState(3);
+  
+  // Confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    pairId: string | null;
+    pairName: string;
+  }>({
+    isOpen: false,
+    pairId: null,
+    pairName: '',
+  });
   
   // Track overlapping group for Tab cycling
   // sourceCellId is the cell that was manually selected (not via Tab)
@@ -148,13 +160,55 @@ function App() {
   }, [pairs, loadAnnotation]);
 
   const handleRemovePair = useCallback((pairId: string) => {
-    setPairs(prev => {
-      const pair = prev.find(p => p.id === pairId);
-      if (pair) {
-        URL.revokeObjectURL(pair.imageUrl);
+    const pair = pairs.find(p => p.id === pairId);
+    if (pair) {
+      const pairName = pair.imageFile.name || (pair.xmlFile ? pair.xmlFile.name : 'Unknown');
+      setConfirmDialog({
+        isOpen: true,
+        pairId,
+        pairName,
+      });
+    }
+  }, [pairs]);
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!confirmDialog.pairId) return;
+
+    const pair = pairs.find(p => p.id === confirmDialog.pairId);
+    if (!pair) {
+      setConfirmDialog({ isOpen: false, pairId: null, pairName: '' });
+      return;
+    }
+
+    try {
+      // Delete files from server
+      const filesToDelete: string[] = [pair.imageFile.name];
+      if (pair.xmlFile) {
+        filesToDelete.push(pair.xmlFile.name);
       }
-      const newPairs = prev.filter(p => p.id !== pairId);
-      if (selectedPairId === pairId) {
+
+      // Delete all files from server
+      await Promise.all(
+        filesToDelete.map(filename => 
+          deleteFile(filename).catch(error => {
+            console.error(`Failed to delete file ${filename} from server:`, error);
+            // Continue with local removal even if server deletion fails
+          })
+        )
+      );
+    } catch (error) {
+      console.error('Error deleting files from server:', error);
+      // Continue with local removal even if server deletion fails
+    }
+
+    // Remove from local state
+    setPairs(prev => {
+      const pairToRemove = prev.find(p => p.id === confirmDialog.pairId);
+      if (pairToRemove) {
+        URL.revokeObjectURL(pairToRemove.imageUrl);
+      }
+      const newPairs = prev.filter(p => p.id !== confirmDialog.pairId);
+      if (selectedPairId === confirmDialog.pairId) {
         setSelectedPairId(newPairs.length > 0 ? newPairs[0].id : null);
         if (newPairs.length > 0) {
           handleSelectPair(newPairs[0].id);
@@ -169,7 +223,14 @@ function App() {
       }
       return newPairs;
     });
-  }, [selectedPairId, handleSelectPair, loadAnnotation]);
+
+    // Close dialog
+    setConfirmDialog({ isOpen: false, pairId: null, pairName: '' });
+  }, [confirmDialog, pairs, selectedPairId, handleSelectPair, loadAnnotation]);
+
+  const handleCancelRemove = useCallback(() => {
+    setConfirmDialog({ isOpen: false, pairId: null, pairName: '' });
+  }, []);
 
   const handleExportXml = useCallback(() => {
     if (!annotation) return;
@@ -541,45 +602,55 @@ function App() {
       />
       <div className="main-content">
         <div className="toolbar">
-          <FileUpload onFilesSelected={handleFilesSelected} />
-          <div className="toolbar-actions">
-            <div className="mode-buttons">
-              <div className={`mode-button-group ${mode === 'move' ? 'active' : ''}`}>
-                <button
-                  onClick={() => setMode('move')}
-                  className={mode === 'move' ? 'active' : ''}
-                  disabled={!annotation}
-                >
-                  Move Mode
-                </button>
-                <ShortcutEditor
-                  label=""
-                  shortcutKey="move"
-                  currentShortcut={shortcuts.move}
-                  onUpdate={updateShortcut}
-                  disabled={!annotation}
-                  active={mode === 'move'}
-                />
-              </div>
-              <div className={`mode-button-group ${mode === 'resize' ? 'active' : ''}`}>
-                <button
-                  onClick={() => setMode('resize')}
-                  className={mode === 'resize' ? 'active' : ''}
-                  disabled={!annotation}
-                >
-                  Resize Mode
-                </button>
-                <ShortcutEditor
-                  label=""
-                  shortcutKey="resize"
-                  currentShortcut={shortcuts.resize}
-                  onUpdate={updateShortcut}
-                  disabled={!annotation}
-                  active={mode === 'resize'}
-                />
+          <div className="toolbar-section toolbar-section-left">
+            <div className="toolbar-group">
+              <FileUpload onFilesSelected={handleFilesSelected} />
+            </div>
+            <div className="toolbar-divider" />
+            <div className="toolbar-group">
+              <div className="mode-buttons">
+                <div className={`mode-button-group ${mode === 'move' ? 'active' : ''}`}>
+                  <button
+                    onClick={() => setMode('move')}
+                    className={mode === 'move' ? 'active' : ''}
+                    disabled={!annotation}
+                    title="Move cells (M)"
+                  >
+                    <span className="button-icon">↔</span>
+                    <span className="button-text">Move</span>
+                  </button>
+                  <ShortcutEditor
+                    label=""
+                    shortcutKey="move"
+                    currentShortcut={shortcuts.move}
+                    onUpdate={updateShortcut}
+                    disabled={!annotation}
+                    active={mode === 'move'}
+                  />
+                </div>
+                <div className={`mode-button-group ${mode === 'resize' ? 'active' : ''}`}>
+                  <button
+                    onClick={() => setMode('resize')}
+                    className={mode === 'resize' ? 'active' : ''}
+                    disabled={!annotation}
+                    title="Resize cells (R)"
+                  >
+                    <span className="button-icon">⤢</span>
+                    <span className="button-text">Resize</span>
+                  </button>
+                  <ShortcutEditor
+                    label=""
+                    shortcutKey="resize"
+                    currentShortcut={shortcuts.resize}
+                    onUpdate={updateShortcut}
+                    disabled={!annotation}
+                    active={mode === 'resize'}
+                  />
+                </div>
               </div>
             </div>
-            <div className="create-cell-group">
+            <div className="toolbar-divider" />
+            <div className="toolbar-group">
               <button
                 onClick={() => {
                   if (!isCreatingCell) {
@@ -589,9 +660,11 @@ function App() {
                   }
                 }}
                 disabled={!currentImageUrl}
-                className={isCreatingCell ? 'active' : ''}
+                className={`toolbar-button toolbar-button-primary ${isCreatingCell ? 'active' : ''}`}
+                title="Create new cell (C)"
               >
-                {isCreatingCell ? 'Cancel' : 'Create Cell'}
+                <span className="button-icon">{isCreatingCell ? '✕' : '+'}</span>
+                <span className="button-text">{isCreatingCell ? 'Cancel' : 'Create Cell'}</span>
               </button>
               <ShortcutEditor
                 label=""
@@ -602,55 +675,80 @@ function App() {
                 active={isCreatingCell}
               />
             </div>
-            <div className="export-buttons">
-              <button onClick={handleExportXml} disabled={!annotation}>
-                Export XML
+          </div>
+          
+          <div className="toolbar-section toolbar-section-right">
+            <div className="toolbar-group">
+              <button
+                onClick={undo}
+                disabled={!annotation || !canUndo}
+                className="toolbar-button toolbar-button-icon"
+                title="Undo (Ctrl+Z)"
+              >
+                <span className="button-icon">↶</span>
+                <span className="button-text">Undo</span>
               </button>
-              <button onClick={handleExportJson} disabled={!annotation}>
-                Export JSON
+              <button
+                onClick={redo}
+                disabled={!annotation || !canRedo}
+                className="toolbar-button toolbar-button-icon"
+                title="Redo (Ctrl+Y)"
+              >
+                <span className="button-icon">↷</span>
+                <span className="button-text">Redo</span>
               </button>
             </div>
-            <div className="cell-actions">
+            <div className="toolbar-divider" />
+            <div className="toolbar-group">
               <button
                 onClick={() => {
                   if (selectedCellIds.size > 0) {
                     selectedCellIds.forEach(cellId => {
                       removeCell(cellId);
                     });
-                    overlappingGroupRef.current = null; // Clear cache when removing cells
+                    overlappingGroupRef.current = null;
                     setSelectedCellIds(new Set());
                   }
                 }}
                 disabled={!annotation || selectedCellIds.size === 0}
+                className="toolbar-button toolbar-button-danger"
+                title="Remove selected cell(s)"
               >
-                Remove {selectedCellIds.size > 1 ? `${selectedCellIds.size} Cells` : 'Cell'}
+                <span className="button-icon">🗑</span>
+                <span className="button-text">Remove {selectedCellIds.size > 1 ? `${selectedCellIds.size}` : ''}</span>
               </button>
             </div>
-            <div className="undo-redo-buttons">
+            <div className="toolbar-divider" />
+            <div className="toolbar-group">
               <button
-                onClick={undo}
-                disabled={!annotation || !canUndo}
-                title="Undo (Ctrl+Z)"
+                onClick={handleExportXml}
+                disabled={!annotation}
+                className="toolbar-button toolbar-button-export"
+                title="Export as XML"
               >
-                Undo
+                <span className="button-icon">📄</span>
+                <span className="button-text">XML</span>
               </button>
               <button
-                onClick={redo}
-                disabled={!annotation || !canRedo}
-                title="Redo (Ctrl+Y)"
+                onClick={handleExportJson}
+                disabled={!annotation}
+                className="toolbar-button toolbar-button-export"
+                title="Export as JSON"
               >
-                Redo
+                <span className="button-icon">📋</span>
+                <span className="button-text">JSON</span>
               </button>
             </div>
-            <div className="visibility-controls">
-              <label>
+            <div className="toolbar-divider" />
+            <div className="toolbar-group">
+              <label className="toolbar-checkbox">
                 <input
                   type="checkbox"
                   checked={showCells}
                   onChange={(e) => setShowCells(e.target.checked)}
                   disabled={!annotation}
                 />
-                <span>Show Cells</span>
+                <span className="checkbox-label">Show Cells</span>
               </label>
             </div>
           </div>
@@ -761,6 +859,15 @@ function App() {
         </div>
       </div>
       <HintSlider />
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title="Confirm Deletion"
+        message={`Are you sure you want to delete "${confirmDialog.pairName}"? This will remove the file from both the application and the server. This action cannot be undone.`}
+        onConfirm={handleConfirmRemove}
+        onCancel={handleCancelRemove}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </div>
   );
 }
