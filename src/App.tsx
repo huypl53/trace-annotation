@@ -1061,11 +1061,47 @@ function App() {
           setSelectedCellIds(new Set());
         }
       }
+      
+      // Handle number keys 1-4 to toggle border visibility (only when cells are selected and not in input)
+      if (['1', '2', '3', '4'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+        
+        if (!isInput && annotation && selectedCellIds.size > 0) {
+          e.preventDefault();
+          
+          // Map keys to border edges: 1=top, 2=left, 3=bottom, 4=right
+          const edgeMap: Record<string, 'top' | 'left' | 'bottom' | 'right'> = {
+            '1': 'top',
+            '2': 'left',
+            '3': 'bottom',
+            '4': 'right',
+          };
+          
+          const edge = edgeMap[e.key];
+          if (edge) {
+            // Get the current state of the edge for the first selected cell
+            const firstCellId = Array.from(selectedCellIds)[0];
+            const firstCell = annotation.getCellById(firstCellId);
+            
+            if (firstCell) {
+              // Toggle: if current value is 1 (visible), set to 0 (hidden), otherwise set to 1
+              const currentValue = firstCell.lines[edge];
+              const newValue = currentValue === 1 ? 0 : 1;
+              
+              // Apply to all selected cells
+              selectedCellIds.forEach(cellId => {
+                updateCellLines(cellId, { [edge]: newValue });
+              });
+            }
+          }
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings, createCell, removeCell]);
+  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo, selectedCellIds, moveSpeedSettings, updateMoveSpeedSettings, createCell, removeCell, updateCellLines]);
 
   return (
     <div className="app">

@@ -20,6 +20,7 @@ const hints: Hint[] = [
   { id: '11', text: '🔍 Enable "Detect Wrong Borders" to highlight cells with incorrect padding' },
   { id: '12', text: '📐 Edit cell coordinates directly in the right panel for precise positioning' },
   { id: '13', text: '👁️ Toggle edge visibility to show/hide cell borders in the final output' },
+  { id: '14', text: '⌨️ Press 1, 2, 3, 4 to toggle border visibility: Top, Left, Bottom, Right' },
 ];
 
 export function HintSlider() {
