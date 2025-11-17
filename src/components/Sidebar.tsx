@@ -10,20 +10,23 @@ interface SidebarProps {
 }
 
 export function Sidebar({ pairs, onSelectPair, onRemovePair, selectedPairId, isCollapsed, onToggleCollapse }: SidebarProps) {
+  // Filter to show only pairs with actual images (exclude orphan XML files)
+  const imagePairs = pairs.filter(pair => pair.imageUrl && pair.imageFile.size > 0);
+
   return (
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
-        <h2>Image/XML Pairs</h2>
+        <h2>Images</h2>
         <button className="sidebar-toggle" onClick={onToggleCollapse} title={isCollapsed ? 'Show sidebar' : 'Hide sidebar'}>
           {isCollapsed ? '▶' : '◀'}
         </button>
       </div>
       {!isCollapsed && (
         <div className="pair-list">
-        {pairs.length === 0 ? (
-          <p>No pairs loaded</p>
+        {imagePairs.length === 0 ? (
+          <p>No images loaded</p>
         ) : (
-          pairs.map(pair => (
+          imagePairs.map(pair => (
             <div
               key={pair.id}
               className={`pair-item ${selectedPairId === pair.id ? 'selected' : ''}`}
@@ -33,15 +36,15 @@ export function Sidebar({ pairs, onSelectPair, onRemovePair, selectedPairId, isC
                 <img src={pair.imageUrl} alt={pair.imageFile.name} className="pair-thumbnail" />
               ) : (
                 <div className="pair-thumbnail pair-thumbnail-placeholder">
-                  <span>XML</span>
+                  <span>IMG</span>
                 </div>
               )}
               <div className="pair-info">
                 <div className="pair-filename">
-                  {pair.imageFile.name || (pair.xmlFile ? pair.xmlFile.name : 'Unknown')}
+                  {pair.imageFile.name}
                 </div>
                 <div className="pair-xml-status">
-                  {pair.xmlFile ? pair.xmlFile.name : 'No XML'}
+                  {pair.xmlFile ? 'Has XML' : 'No XML'}
                 </div>
               </div>
               <button

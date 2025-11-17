@@ -5,9 +5,11 @@ import { EdgeControls } from './components/EdgeControls';
 import { FileUpload } from './components/FileUpload';
 import { HintSlider } from './components/HintSlider';
 import { ImageCanvas } from './components/ImageCanvas';
+import { ImageScaleControls } from './components/ImageScaleControls';
 import { MoveSpeedSettings, useMoveSpeedSettings } from './components/MoveSpeedSettings';
 import { ShortcutEditor } from './components/ShortcutEditor';
 import { Sidebar } from './components/Sidebar';
+import { UnsavedChangesDialog } from './components/UnsavedChangesDialog';
 import { useAnnotation } from './hooks/useAnnotation';
 import { useArrowKeyMovement } from './hooks/useArrowKeyMovement';
 import { normalizeShortcut, parseKeyEvent, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -19,7 +21,7 @@ import { calculateSnap } from './utils/snapping';
 import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 import { findOverlappingCellGroup } from './utils/polygonIntersection';
-import { listFiles, downloadFile, deleteFile } from './utils/fileApi';
+import { listFiles, downloadFile, deleteFile, uploadFiles } from './utils/fileApi';
 
 function App() {
   const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
@@ -36,6 +38,75 @@ function App() {
   const [detectWrongBorders, setDetectWrongBorders] = useState(false);
   const [horizontalPadding, setHorizontalPadding] = useState(2);
   const [verticalPadding, setVerticalPadding] = useState(3);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imageScale, setImageScale] = useState(1);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingPairSwitch, setPendingPairSwitch] = useState<string | null>(null);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const lastSavedAnnotationRef = useRef<string | null>(null);
+  
+  const handleSetImageScale = useCallback((scale: number) => {
+    setImageScale(scale);
+  }, []);
+
+  // Download scaled image
+  const handleDownloadScaledImage = useCallback(async () => {
+    if (!currentImageUrl) {
+      return;
+    }
+
+    try {
+      // Load the image
+      const img = new Image();
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = currentImageUrl;
+      });
+
+      // Calculate scaled dimensions
+      const scaledWidth = Math.round(img.width * imageScale);
+      const scaledHeight = Math.round(img.height * imageScale);
+
+      // Create canvas and draw scaled image
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
+      }
+
+      // Use high-quality image scaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Draw the scaled image
+      ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+
+      // Convert to blob and download
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          throw new Error('Failed to create blob');
+        }
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const scaleStr = imageScale.toString().replace('.', '_');
+        link.download = `scaled_image_${scaleStr}x.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    } catch (error) {
+      console.error('Failed to download scaled image:', error);
+      alert('Failed to download scaled image. Please try again.');
+    }
+  }, [currentImageUrl, imageScale]);
   
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -100,6 +171,8 @@ function App() {
         const firstPair = uniqueNewPairs[0];
         setSelectedPairId(firstPair.id);
         setCurrentImageUrl(firstPair.imageUrl || null);
+        setImageZoom(1); // Reset zoom when loading new image
+        setImageScale(1); // Reset scale when loading new image
         // Load XML if available
         if (firstPair.xmlFile) {
           const reader = new FileReader();
@@ -129,11 +202,13 @@ function App() {
     });
   }, [loadAnnotation]);
 
-  const handleSelectPair = useCallback((pairId: string) => {
+  const performPairSwitch = useCallback((pairId: string) => {
     setSelectedPairId(pairId);
     const pair = pairs.find(p => p.id === pairId);
     if (pair) {
       setCurrentImageUrl(pair.imageUrl || null);
+      setImageZoom(1); // Reset zoom when selecting a different image
+      setImageScale(1); // Reset scale when selecting a different image
       if (pair.xmlFile) {
         const reader = new FileReader();
         reader.onload = e => {
@@ -141,6 +216,8 @@ function App() {
           try {
             const annotationData = parseXml(xmlString);
             loadAnnotation(annotationData);
+            lastSavedAnnotationRef.current = xmlString;
+            setHasUnsavedChanges(false);
           } catch (error) {
             console.error('Failed to parse XML:', error);
           }
@@ -155,9 +232,89 @@ function App() {
           tableCoords: { points: [] },
           cells: [],
         });
+        lastSavedAnnotationRef.current = null;
+        setHasUnsavedChanges(true);
       }
     }
+    setPendingPairSwitch(null);
+    setShowUnsavedDialog(false);
   }, [pairs, loadAnnotation]);
+
+  const handleSelectPair = useCallback((pairId: string) => {
+    if (hasUnsavedChanges && pairId !== selectedPairId) {
+      setPendingPairSwitch(pairId);
+      setShowUnsavedDialog(true);
+    } else {
+      performPairSwitch(pairId);
+    }
+  }, [hasUnsavedChanges, selectedPairId, performPairSwitch]);
+
+  const handleSaveXml = useCallback(async () => {
+    if (!annotation) return;
+    
+    try {
+      const xmlString = exportToXml(annotation.toData());
+      const xmlFilename = annotation.filename.replace(/\.(png|jpg|jpeg)$/i, '.xml');
+      const blob = new Blob([xmlString], { type: 'text/xml' });
+      const xmlFile = new File([blob], xmlFilename, { type: 'text/xml' });
+      
+      // Save to server
+      await uploadFiles([xmlFile]);
+      
+      // Also download to local machine
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = xmlFilename;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      // Mark as saved
+      lastSavedAnnotationRef.current = xmlString;
+      setHasUnsavedChanges(false);
+      
+      // Update the pair to include the XML file if it doesn't exist
+      setPairs(prev => prev.map(pair => {
+        if (pair.id === selectedPairId && !pair.xmlFile) {
+          return { ...pair, xmlFile };
+        }
+        return pair;
+      }));
+    } catch (error) {
+      // If server upload fails, still allow download
+      const xmlString = exportToXml(annotation.toData());
+      const xmlFilename = annotation.filename.replace(/\.(png|jpg|jpeg)$/i, '.xml');
+      const blob = new Blob([xmlString], { type: 'text/xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = xmlFilename;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      lastSavedAnnotationRef.current = xmlString;
+      setHasUnsavedChanges(false);
+    }
+  }, [annotation, selectedPairId]);
+
+  const handleUnsavedDialogSave = useCallback(() => {
+    if (pendingPairSwitch) {
+      handleSaveXml().then(() => {
+        performPairSwitch(pendingPairSwitch);
+      });
+    }
+  }, [pendingPairSwitch, handleSaveXml, performPairSwitch]);
+
+  const handleUnsavedDialogDiscard = useCallback(() => {
+    if (pendingPairSwitch) {
+      performPairSwitch(pendingPairSwitch);
+    }
+  }, [pendingPairSwitch, performPairSwitch]);
+
+  const handleUnsavedDialogCancel = useCallback(() => {
+    setShowUnsavedDialog(false);
+    setPendingPairSwitch(null);
+  }, []);
 
   const handleRemovePair = useCallback((pairId: string) => {
     const pair = pairs.find(p => p.id === pairId);
@@ -232,17 +389,32 @@ function App() {
     setConfirmDialog({ isOpen: false, pairId: null, pairName: '' });
   }, []);
 
+  // Track annotation changes to detect unsaved changes
+  useEffect(() => {
+    if (!annotation) {
+      setHasUnsavedChanges(false);
+      lastSavedAnnotationRef.current = null;
+      return;
+    }
+
+    const currentXml = exportToXml(annotation.toData());
+    
+    // If we have a saved reference, compare with current
+    if (lastSavedAnnotationRef.current !== null) {
+      setHasUnsavedChanges(currentXml !== lastSavedAnnotationRef.current);
+    } else {
+      // No saved reference means this is a new annotation without XML file
+      // performPairSwitch will have already set hasUnsavedChanges, but we ensure it here too
+      const pair = pairs.find(p => p.id === selectedPairId);
+      if (!pair?.xmlFile) {
+        setHasUnsavedChanges(true);
+      }
+    }
+  }, [annotation, pairs, selectedPairId]);
+
   const handleExportXml = useCallback(() => {
-    if (!annotation) return;
-    const xmlString = exportToXml(annotation.toData());
-    const blob = new Blob([xmlString], { type: 'text/xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = annotation.filename.replace(/\.(png|jpg|jpeg)$/i, '.xml');
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [annotation]);
+    handleSaveXml();
+  }, [handleSaveXml]);
 
   const handleExportJson = useCallback(() => {
     if (!annotation) return;
@@ -429,7 +601,7 @@ function App() {
               handleFilesSelected([imageFile, xmlFile]);
             }
           } catch (error) {
-            console.warn('Failed to load default files:', error);
+            // Failed to load default files, continue without them
           }
           return;
         }
@@ -468,7 +640,7 @@ function App() {
             handleFilesSelected([imageFile, xmlFile]);
           }
         } catch (fallbackError) {
-          console.warn('Failed to load default files:', fallbackError);
+          // Failed to load default files, continue without them
         }
       }
     };
@@ -488,6 +660,15 @@ function App() {
 
       const pressedKey = parseKeyEvent(e);
       const normalizedPressed = normalizeShortcut(pressedKey);
+      
+      // Handle Ctrl+S to save XML
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (annotation) {
+          handleSaveXml();
+        }
+        return;
+      }
       
       // Handle Tab key to cycle through overlapping cells
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -723,11 +904,12 @@ function App() {
               <button
                 onClick={handleExportXml}
                 disabled={!annotation}
-                className="toolbar-button toolbar-button-export"
-                title="Export as XML"
+                className={`toolbar-button toolbar-button-export ${hasUnsavedChanges ? 'has-unsaved-changes' : ''}`}
+                title={`Save XML (Ctrl+S)${hasUnsavedChanges ? ' - Unsaved changes' : ''}`}
               >
-                <span className="button-icon">📄</span>
-                <span className="button-text">XML</span>
+                <span className="button-icon">💾</span>
+                <span className="button-text">Save XML</span>
+                {hasUnsavedChanges && <span className="unsaved-indicator">●</span>}
               </button>
               <button
                 onClick={handleExportJson}
@@ -784,8 +966,17 @@ function App() {
             detectWrongBorders={detectWrongBorders}
             horizontalPadding={horizontalPadding}
             verticalPadding={verticalPadding}
+            externalZoom={imageZoom}
+            onZoomChange={setImageZoom}
           />
           <div className="controls-panel">
+            <ImageScaleControls
+              currentScale={imageScale}
+              onSetScale={handleSetImageScale}
+              disabled={!currentImageUrl}
+              imageUrl={currentImageUrl}
+              onDownloadImage={handleDownloadScaledImage}
+            />
             {mode === 'move' && (
               <MoveSpeedSettings
                 settings={moveSpeedSettings}
@@ -868,6 +1059,13 @@ function App() {
         confirmText="Delete"
         cancelText="Cancel"
       />
+      {showUnsavedDialog && (
+        <UnsavedChangesDialog
+          onSave={handleUnsavedDialogSave}
+          onDiscard={handleUnsavedDialogDiscard}
+          onCancel={handleUnsavedDialogCancel}
+        />
+      )}
     </div>
   );
 }

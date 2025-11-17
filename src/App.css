@@ -629,6 +629,158 @@ body {
   max-width: 100%;
 }
 
+.conversion-status {
+  font-size: 12px;
+  color: #2563eb;
+  padding: 4px 8px;
+  background: #eff6ff;
+  border-radius: 4px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conversion-status::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid #2563eb;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.conversion-result {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  z-index: 1001;
+  border-left: 4px solid;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.conversion-result.success {
+  border-left-color: #10b981;
+}
+
+.conversion-result.error {
+  border-left-color: #ef4444;
+}
+
+.conversion-result-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.conversion-icon {
+  font-size: 20px;
+  font-weight: bold;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.conversion-result.success .conversion-icon {
+  color: #10b981;
+}
+
+.conversion-result.error .conversion-icon {
+  color: #ef4444;
+}
+
+.conversion-message {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.conversion-errors {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.conversion-errors details {
+  font-size: 12px;
+}
+
+.conversion-errors summary {
+  cursor: pointer;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.conversion-errors summary:hover {
+  color: #374151;
+}
+
+.conversion-errors ul {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 8px;
+}
+
+.conversion-errors li {
+  padding: 4px 0;
+  color: #dc2626;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.conversion-errors li::before {
+  content: '• ';
+  margin-right: 4px;
+}
+
+.conversion-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.conversion-close:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
 @media (max-width: 1024px) {
   .upload-group label {
     font-size: 11px;
@@ -929,6 +1081,24 @@ body {
   margin-top: 16px;
   margin-bottom: 8px;
   color: #333;
+}
+
+.section-header-with-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+  position: relative;
+}
+
+.tooltip-icon {
+  font-size: 12px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.section-header-with-tooltip:hover .tooltip-icon {
+  opacity: 1;
 }
 
 .edge-controls p {
@@ -1275,6 +1445,109 @@ body {
   text-align: right;
 }
 
+.image-scale-controls {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.image-scale-controls h4 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.scale-input-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.scale-input-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+  flex: 1;
+}
+
+.scale-input-label span {
+  min-width: 100px;
+  font-weight: 500;
+}
+
+.scale-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  min-width: 80px;
+}
+
+.scale-input:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.scale-input:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.scale-apply-button {
+  padding: 6px 16px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.scale-apply-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.scale-apply-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.scale-download-group {
+  margin-top: 12px;
+}
+
+.scale-download-button {
+  width: 100%;
+  padding: 8px 16px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.scale-download-button:hover:not(:disabled) {
+  background: #059669;
+}
+
+.scale-download-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .overwrite-dialog-overlay {
   position: fixed;
   top: 0;
@@ -1362,6 +1635,105 @@ body {
 
 .confirm-button:hover {
   background: #dc2626;
+}
+
+/* Unsaved Changes Dialog */
+.unsaved-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.unsaved-dialog {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.unsaved-dialog h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.unsaved-dialog p {
+  margin: 0 0 24px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.unsaved-dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.unsaved-dialog-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.unsaved-dialog-actions .save-button {
+  background: #2563eb;
+  color: white;
+}
+
+.unsaved-dialog-actions .save-button:hover {
+  background: #1d4ed8;
+}
+
+.unsaved-dialog-actions .discard-button {
+  background: #ef4444;
+  color: white;
+}
+
+.unsaved-dialog-actions .discard-button:hover {
+  background: #dc2626;
+}
+
+.unsaved-dialog-actions .cancel-button {
+  background: #e5e7eb;
+  color: #333;
+}
+
+.unsaved-dialog-actions .cancel-button:hover {
+  background: #d1d5db;
+}
+
+/* Unsaved changes indicator */
+.toolbar-button.has-unsaved-changes {
+  position: relative;
+}
+
+.unsaved-indicator {
+  color: #ef4444;
+  font-size: 12px;
+  margin-left: 4px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Confirmation Dialog */

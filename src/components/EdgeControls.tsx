@@ -23,7 +23,10 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints, onUpdateColor, on
         <p>Select a cell to edit its properties</p>
         {onUpdateColor && onUpdateOpacity && (
           <div className="appearance-section">
-            <h4>Appearance (All Cells)</h4>
+            <h4 className="section-header-with-tooltip" title="Change the color and opacity of all cells in the annotation. These settings apply globally to all cells, not just the selected one.">
+              Appearance (All Cells)
+              <span className="tooltip-icon">ℹ️</span>
+            </h4>
             <div className="appearance-controls">
               <div className="appearance-group">
                 <label className="appearance-label">Color:</label>
@@ -137,7 +140,10 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints, onUpdateColor, on
       <h3>Cell Controls</h3>
       
       <div className="coordinates-section">
-        <h4>Coordinates</h4>
+        <h4 className="section-header-with-tooltip" title="Edit cell corner coordinates. Changing top-left or bottom-right coordinates will automatically adjust related corners to maintain a rectangular shape.">
+          Coordinates
+          <span className="tooltip-icon">ℹ️</span>
+        </h4>
         <div className="coordinates-list">
           <div className="coordinate-group">
             <span className="coordinate-label">Top Left:</span>
@@ -193,7 +199,10 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints, onUpdateColor, on
       </div>
 
       <div className="edge-section">
-        <h4>Edge Visibility</h4>
+        <h4 className="section-header-with-tooltip" title="Toggle visibility of cell borders. Visible edges are shown as solid lines, hidden edges are shown as dashed lines. This helps identify which borders should be rendered in the final output.">
+          Edge Visibility
+          <span className="tooltip-icon">ℹ️</span>
+        </h4>
         <div className="edge-buttons">
           <div className="edge-group">
             <label>Top</label>
@@ -236,7 +245,10 @@ export function EdgeControls({ cell, onUpdate, onUpdatePoints, onUpdateColor, on
 
       {onUpdateColor && onUpdateOpacity && (
         <div className="appearance-section">
-          <h4>Appearance (All Cells)</h4>
+          <h4 className="section-header-with-tooltip" title="Change the color and opacity of all cells in the annotation. These settings apply globally to all cells, not just the selected one.">
+            Appearance (All Cells)
+            <span className="tooltip-icon">ℹ️</span>
+          </h4>
           <div className="appearance-controls">
             <div className="appearance-group">
               <label className="appearance-label">Color:</label>
