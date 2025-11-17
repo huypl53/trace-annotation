@@ -18,7 +18,7 @@ import { exportToXml } from './utils/xmlExporter';
 import { parseXml } from './utils/xmlParser';
 
 function App() {
-  const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity } = useAnnotation();
+  const { annotation, loadAnnotation, moveCell, updateCell, updateCellLines, updateCellPoints, createCell, removeCell, updateAllCellsColor, updateAllCellsOpacity, undo, redo, canUndo, canRedo } = useAnnotation();
   const { shortcuts, updateShortcut } = useKeyboardShortcuts();
   const { settings: moveSpeedSettings, updateSettings: updateMoveSpeedSettings } = useMoveSpeedSettings();
   const [pairs, setPairs] = useState<ImageXmlPair[]>([]);
@@ -348,6 +348,25 @@ function App() {
       const pressedKey = parseKeyEvent(e);
       const normalizedPressed = normalizeShortcut(pressedKey);
       
+      // Handle undo/redo with standard shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          // Ctrl+Z or Cmd+Z for undo
+          if (canUndo && annotation) {
+            e.preventDefault();
+            undo();
+          }
+          return;
+        } else if ((e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !e.altKey) {
+          // Ctrl+Y or Ctrl+Shift+Z for redo
+          if (canRedo && annotation) {
+            e.preventDefault();
+            redo();
+          }
+          return;
+        }
+      }
+      
       if (normalizedPressed === normalizeShortcut(shortcuts.move)) {
         if (annotation) {
           e.preventDefault();
@@ -372,7 +391,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell]);
+  }, [shortcuts, annotation, currentImageUrl, isCreatingCell, handleCreateCell, canUndo, canRedo, undo, redo]);
 
   return (
     <div className="app">
@@ -466,6 +485,22 @@ function App() {
                 disabled={!annotation || !selectedCellId}
               >
                 Remove Cell
+              </button>
+            </div>
+            <div className="undo-redo-buttons">
+              <button
+                onClick={undo}
+                disabled={!annotation || !canUndo}
+                title="Undo (Ctrl+Z)"
+              >
+                Undo
+              </button>
+              <button
+                onClick={redo}
+                disabled={!annotation || !canRedo}
+                title="Redo (Ctrl+Y)"
+              >
+                Redo
               </button>
             </div>
             <div className="visibility-controls">

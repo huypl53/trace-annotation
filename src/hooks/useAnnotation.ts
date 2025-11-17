@@ -2,13 +2,14 @@ import { useState, useCallback } from 'react';
 import { Annotation } from '../models/Annotation';
 import { AnnotationData } from '../models/types';
 import { Cell } from '../models/Cell';
+import { useUndoRedo } from './useUndoRedo';
 
 export function useAnnotation() {
-  const [annotation, setAnnotation] = useState<Annotation | null>(null);
+  const { annotation, setAnnotation, resetHistory, undo, redo, canUndo, canRedo } = useUndoRedo();
 
   const loadAnnotation = useCallback((data: AnnotationData) => {
-    setAnnotation(new Annotation(data));
-  }, []);
+    resetHistory(new Annotation(data));
+  }, [resetHistory]);
 
   const updateCell = useCallback((cellId: string, updater: (cell: Cell) => void) => {
     setAnnotation(prev => {
@@ -102,6 +103,10 @@ export function useAnnotation() {
     removeCell,
     updateAllCellsColor,
     updateAllCellsOpacity,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   };
 }
 
