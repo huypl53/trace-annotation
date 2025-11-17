@@ -178,6 +178,11 @@ export function ImageCanvas({
       return;
     }
     
+    // Don't start drag if middle mouse button is pressed - allow panning instead
+    if (e.button === 1) {
+      return;
+    }
+    
     // Don't start drag if Ctrl/Cmd or Shift is pressed - let onClick handle selection
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
       return;
@@ -695,6 +700,32 @@ export function ImageCanvas({
 
   const shouldShowSnapPreview = snapEnabled && snapPreview?.show && snapPreview.points.length > 0;
 
+  // Calculate scrollable area bounds to enable scrolling in all directions
+  // When content is positioned at negative coordinates, we need a wrapper that extends
+  // the scrollable area to include those negative positions
+  const containerWidth = containerRef.current?.clientWidth || 0;
+  const containerHeight = containerRef.current?.clientHeight || 0;
+  
+  // Calculate the bounds of where content can be positioned
+  // Ensure we account for content that extends beyond container bounds
+  const minX = Math.min(0, zoomedDisplayOffsetX);
+  const minY = Math.min(0, zoomedDisplayOffsetY);
+  const maxX = Math.max(containerWidth, zoomedDisplayOffsetX + displayWidth);
+  const maxY = Math.max(containerHeight, zoomedDisplayOffsetY + displayHeight);
+  
+  // Wrapper dimensions need to cover the full scrollable area
+  // Add padding to ensure we can scroll even when content is at the edges
+  const scrollPadding = 1000; // Large padding to allow scrolling in all directions
+  const wrapperWidth = Math.max(containerWidth, maxX - minX + scrollPadding * 2);
+  const wrapperHeight = Math.max(containerHeight, maxY - minY + scrollPadding * 2);
+  const wrapperLeft = minX - scrollPadding;
+  const wrapperTop = minY - scrollPadding;
+  
+  // Adjust content positions relative to the wrapper
+  // This maintains the same visual position as before
+  const contentOffsetX = zoomedDisplayOffsetX - wrapperLeft;
+  const contentOffsetY = zoomedDisplayOffsetY - wrapperTop;
+
   return (
     <div
       className="image-canvas"
@@ -720,7 +751,16 @@ export function ImageCanvas({
         <span className="zoom-level">{Math.round(userZoom * 100)}%</span>
       </div>
       {imageSize && (
-        <>
+        <div
+          style={{
+            position: 'absolute',
+            left: `${wrapperLeft}px`,
+            top: `${wrapperTop}px`,
+            width: `${wrapperWidth}px`,
+            height: `${wrapperHeight}px`,
+            pointerEvents: 'none',
+          }}
+        >
           <img
             src={imageUrl}
             alt="Annotation target"
@@ -728,13 +768,14 @@ export function ImageCanvas({
             height={displayHeight}
             style={{
               position: 'absolute',
-              top: `${zoomedDisplayOffsetY}px`,
-              left: `${zoomedDisplayOffsetX}px`,
+              top: `${contentOffsetY}px`,
+              left: `${contentOffsetX}px`,
               width: `${displayWidth}px`,
               height: `${displayHeight}px`,
               maxWidth: 'none',
               maxHeight: 'none',
               display: 'block',
+              pointerEvents: 'none',
             }}
           />
           {annotation && showCells && originalImageSize && (
@@ -746,8 +787,8 @@ export function ImageCanvas({
               height={displayHeight}
               style={{
                 position: 'absolute',
-                top: `${zoomedDisplayOffsetY}px`,
-                left: `${zoomedDisplayOffsetX}px`,
+                top: `${contentOffsetY}px`,
+                left: `${contentOffsetX}px`,
                 width: `${displayWidth}px`,
                 height: `${displayHeight}px`,
                 pointerEvents: onCreateCell ? 'none' : 'all',
@@ -840,6 +881,10 @@ export function ImageCanvas({
                       strokeLinejoin="round"
                       onMouseDown={mode === 'move' ? (e) => handleCellMouseDown(e, cell.id) : undefined}
                       onClick={(e) => {
+                        // Don't handle clicks for middle mouse button - allow panning
+                        if (e.button === 1) {
+                          return;
+                        }
                         e.stopPropagation();
                         const isCtrlOrMeta = e.ctrlKey || e.metaKey;
                         const isShift = e.shiftKey;
@@ -950,8 +995,8 @@ export function ImageCanvas({
               preserveAspectRatio="none"
               style={{
                 position: 'absolute',
-                top: `${zoomedDisplayOffsetY}px`,
-                left: `${zoomedDisplayOffsetX}px`,
+                top: `${contentOffsetY}px`,
+                left: `${contentOffsetX}px`,
                 width: `${displayWidth}px`,
                 height: `${displayHeight}px`,
                 pointerEvents: 'none',
@@ -970,7 +1015,7 @@ export function ImageCanvas({
               />
             </svg>
           )}
-        </>
+        </div>
       )}
     </div>
   );
