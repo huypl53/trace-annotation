@@ -182,6 +182,44 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.toolbar.collapsed {
+  padding: 4px 16px;
+  min-height: 32px;
+}
+
+.toolbar-header {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+.toolbar:not(.collapsed) {
+  padding-left: 48px;
+}
+
+.toolbar-toggle {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbar-toggle:hover {
+  background: #f3f4f6;
+  color: #333;
 }
 
 @media (max-width: 1024px) {
@@ -1069,6 +1107,49 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
+  transition: width 0.2s ease;
+}
+
+.controls-panel.collapsed {
+  width: 40px;
+  padding: 8px 4px;
+  overflow: visible;
+}
+
+.controls-panel-header {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+.controls-panel.collapsed .controls-panel-header {
+  position: static;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.controls-panel-toggle {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #666;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controls-panel-toggle:hover {
+  background: #f3f4f6;
+  color: #333;
 }
 
 .edge-controls h3 {

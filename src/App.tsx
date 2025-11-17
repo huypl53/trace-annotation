@@ -35,6 +35,8 @@ function App() {
   const [mode, setMode] = useState<'move' | 'resize'>('move');
   const [showCells, setShowCells] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  const [isControlsPanelCollapsed, setIsControlsPanelCollapsed] = useState(false);
   const [detectWrongBorders, setDetectWrongBorders] = useState(false);
   const [horizontalPadding, setHorizontalPadding] = useState(2);
   const [verticalPadding, setVerticalPadding] = useState(3);
@@ -1001,8 +1003,19 @@ function App() {
         onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
       />
       <div className="main-content">
-        <div className="toolbar">
-          <div className="toolbar-section toolbar-section-left">
+        <div className={`toolbar ${isToolbarCollapsed ? 'collapsed' : ''}`}>
+          <div className="toolbar-header">
+            <button 
+              className="toolbar-toggle" 
+              onClick={() => setIsToolbarCollapsed(prev => !prev)}
+              title={isToolbarCollapsed ? 'Expand toolbar' : 'Collapse toolbar'}
+            >
+              {isToolbarCollapsed ? '▼' : '▲'}
+            </button>
+          </div>
+          {!isToolbarCollapsed && (
+            <>
+              <div className="toolbar-section toolbar-section-left">
             <div className="toolbar-group">
               <FileUpload onFilesSelected={handleFilesSelected} />
             </div>
@@ -1153,6 +1166,8 @@ function App() {
               </label>
             </div>
           </div>
+            </>
+          )}
         </div>
         <div className="canvas-container">
           <ImageCanvas
@@ -1188,7 +1203,18 @@ function App() {
             externalZoom={imageZoom}
             onZoomChange={setImageZoom}
           />
-          <div className="controls-panel">
+          <div className={`controls-panel ${isControlsPanelCollapsed ? 'collapsed' : ''}`}>
+            <div className="controls-panel-header">
+              <button 
+                className="controls-panel-toggle" 
+                onClick={() => setIsControlsPanelCollapsed(prev => !prev)}
+                title={isControlsPanelCollapsed ? 'Expand controls' : 'Collapse controls'}
+              >
+                {isControlsPanelCollapsed ? '◀' : '▶'}
+              </button>
+            </div>
+            {!isControlsPanelCollapsed && (
+              <>
             <ImageScaleControls
               currentScale={imageScale}
               onSetScale={handleSetImageScale}
@@ -1265,6 +1291,8 @@ function App() {
               globalColor={annotation?.cells[0]?.color}
               globalOpacity={annotation?.cells[0]?.opacity}
             />
+              </>
+            )}
           </div>
         </div>
       </div>
