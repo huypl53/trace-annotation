@@ -223,15 +223,15 @@ async function detectLineInRegion(
     const primaryDimension = isHorizontal ? width : height;
     const secondaryDimension = isHorizontal ? height : width;
 
-    // More lenient adaptive parameters for better line detection
-    // Adaptive threshold: proportional to primary dimension (lower threshold for smaller regions)
-    const threshold = Math.max(3, Math.floor(primaryDimension * 0.15));
+    // Strict adaptive parameters for more accurate line detection
+    // Adaptive threshold: proportional to primary dimension (higher threshold for stricter detection)
+    const threshold = Math.max(5, Math.floor(primaryDimension * 0.3));
 
-    // Adaptive minLineLength: proportional to primary dimension (shorter lines allowed)
-    const minLineLength = Math.max(2, Math.floor(primaryDimension * 0.25));
+    // Adaptive minLineLength: proportional to primary dimension (longer lines required)
+    const minLineLength = Math.max(5, Math.floor(primaryDimension * 0.5));
 
-    // Adaptive maxLineGap: proportional to secondary dimension (larger gaps allowed)
-    const maxLineGap = Math.max(1, Math.floor(secondaryDimension * 0.6));
+    // Adaptive maxLineGap: proportional to secondary dimension (smaller gaps allowed for stricter detection)
+    const maxLineGap = Math.max(1, Math.floor(secondaryDimension * 0.3));
 
     // Apply HoughLinesP
     const lines = new cv.Mat();
@@ -246,7 +246,7 @@ async function detectLineInRegion(
     );
 
     // Filter lines by orientation to match the edge direction
-    const angleThreshold = Math.PI / 4; // 45 degrees tolerance (more lenient)
+    const angleThreshold = Math.PI / 6; // 30 degrees tolerance (stricter alignment required)
     let hasMatchingLine = false;
 
     for (let i = 0; i < lines.rows; i++) {
@@ -314,11 +314,12 @@ async function checkBorderEdge(
     x1 = bounds.minX;
     x2 = bounds.maxX;
 
-    // Calculate full width after padding
+    // Calculate full width after padding (along the line, use horizontalPadding)
     const fullWidth = (x2 - horizontalPadding) - (x1 + horizontalPadding);
     // Take 80% of width and center it
     rectWidth = fullWidth * 0.8;
     rectX = (x1 + horizontalPadding) + (fullWidth * 0.1);
+    // Perpendicular to the line, use verticalPadding (thicker)
     rectY = y - verticalPadding;
     rectHeight = verticalPadding * 2;
 
@@ -332,13 +333,14 @@ async function checkBorderEdge(
     y1 = bounds.minY;
     y2 = bounds.maxY;
 
-    // Calculate full height after padding
-    const fullHeight = (y2 - horizontalPadding) - (y1 + horizontalPadding);
+    // Calculate full height after padding (along the line, use verticalPadding)
+    const fullHeight = (y2 - verticalPadding) - (y1 + verticalPadding);
     // Take 80% of height and center it
     rectHeight = fullHeight * 0.8;
-    rectY = (y1 + horizontalPadding) + (fullHeight * 0.1);
-    rectX = x - verticalPadding;
-    rectWidth = verticalPadding * 2;
+    rectY = (y1 + verticalPadding) + (fullHeight * 0.1);
+    // Perpendicular to the line, use horizontalPadding (thicker)
+    rectX = x - horizontalPadding;
+    rectWidth = horizontalPadding * 2;
 
     // Validate dimensions
     if (rectWidth <= 0 || rectHeight <= 0) {
@@ -423,8 +425,8 @@ export async function detectWrongBorders(
             imageData,
             img.width,
             img.height,
-            horizontalPadding,
-            verticalPadding,
+            horizontalPadding, // Thinner for along the line direction
+            verticalPadding, // Thicker for perpendicular direction (horizontal edges)
             isTopVisible
           );
           if (isTopWrong) {
@@ -446,8 +448,8 @@ export async function detectWrongBorders(
             imageData,
             img.width,
             img.height,
-            horizontalPadding,
-            verticalPadding,
+            horizontalPadding, // Thinner for along the line direction
+            verticalPadding, // Thicker for perpendicular direction (horizontal edges)
             isBottomVisible
           );
           if (isBottomWrong) {
@@ -469,8 +471,8 @@ export async function detectWrongBorders(
             imageData,
             img.width,
             img.height,
-            horizontalPadding,
-            verticalPadding,
+            horizontalPadding, // Thicker for perpendicular direction (vertical edges)
+            verticalPadding, // Thinner for along the line direction
             isLeftVisible
           );
           if (isLeftWrong) {
@@ -492,8 +494,8 @@ export async function detectWrongBorders(
             imageData,
             img.width,
             img.height,
-            horizontalPadding,
-            verticalPadding,
+            horizontalPadding, // Thicker for perpendicular direction (vertical edges)
+            verticalPadding, // Thinner for along the line direction
             isRightVisible
           );
           if (isRightWrong) {
